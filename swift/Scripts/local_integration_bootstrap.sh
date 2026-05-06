@@ -307,7 +307,7 @@ emit_exports() {
   local device_id="$2"
   local unbound_device_id="$3"
   cat <<EOF
-Swift Data Gateway Client 本地集成测试 bootstrap 已完成
+Swift Data Gateway Client local integration test bootstrap completed
 
 export DGW_LOCAL_AUTH_ENDPOINT='${AUTH_ENDPOINT}'
 export DGW_LOCAL_AUTH_ADMIN_ENDPOINT='${AUTH_ADMIN_ENDPOINT}'
@@ -342,7 +342,7 @@ export DGW_LOCAL_BOOTSTRAP_CSRF_ORIGIN='${BOOTSTRAP_CSRF_ORIGIN}'
 export DATA_GATEWAY_USE_MOCK_STS='${DATA_GATEWAY_USE_MOCK_STS:-true}'
 
 # init endpoint note
-# macOS resolver 手工测试可把 init-device.platform.archebase.ai 临时指向本机，测试后删除 resolver 配置并 flush DNS cache。
+# For manual macOS resolver tests, temporarily point init-device.platform.archebase.ai at localhost, then remove the resolver entry and flush the DNS cache.
 
 # stack bootstrap command
 export LOCAL_SYSTEM_ADMIN_PASSWORD='${BOOTSTRAP_ADMIN_PASSWORD}'
