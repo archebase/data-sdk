@@ -1,0 +1,410 @@
+syntax = "proto3";
+
+package archebase.auth.v1;
+
+import "google/protobuf/timestamp.proto";
+
+service AuthService {
+  // Public site credential exchange. This accepts a site credential and does not require a user or system JWT.
+  rpc ExchangeCredential(ExchangeCredentialRequest)
+      returns (ExchangeCredentialResponse);
+  // Public human login. SERVICE_ACCOUNT users cannot authenticate through this method.
+  rpc Login(LoginRequest)
+      returns (LoginResponse);
+  // Public human refresh-token rotation. System accounts must not use this method.
+  rpc RefreshToken(RefreshTokenRequest)
+      returns (RefreshTokenResponse);
+}
+
+service SystemAuthService {
+  // Public system credential exchange. This accepts a stable system credential and returns only a short-lived system access JWT.
+  rpc ExchangeSystemCredential(ExchangeSystemCredentialRequest)
+      returns (ExchangeSystemCredentialResponse);
+}
+
+service AdminAuthService {
+  rpc CreateSite(CreateSiteRequest)
+      returns (CreateSiteResponse);
+  rpc GetSite(GetSiteRequest)
+      returns (GetSiteResponse);
+  rpc ListSites(ListSitesRequest)
+      returns (ListSitesResponse);
+  rpc EnableSite(EnableSiteRequest)
+      returns (EnableSiteResponse);
+  rpc DisableSite(DisableSiteRequest)
+      returns (DisableSiteResponse);
+  rpc UpdateSite(UpdateSiteRequest)
+      returns (UpdateSiteResponse);
+  rpc DeleteSite(DeleteSiteRequest)
+      returns (DeleteSiteResponse);
+  rpc CreateApiKey(CreateApiKeyRequest)
+      returns (CreateApiKeyResponse);
+  rpc GetApiKey(GetApiKeyRequest)
+      returns (GetApiKeyResponse);
+  rpc ListApiKeys(ListApiKeysRequest)
+      returns (ListApiKeysResponse);
+  rpc EnableApiKey(EnableApiKeyRequest)
+      returns (EnableApiKeyResponse);
+  rpc DisableApiKey(DisableApiKeyRequest)
+      returns (DisableApiKeyResponse);
+  rpc UpdateApiKey(UpdateApiKeyRequest)
+      returns (UpdateApiKeyResponse);
+  rpc DeleteApiKey(DeleteApiKeyRequest)
+      returns (DeleteApiKeyResponse);
+  rpc CreateOrganization(CreateOrganizationRequest)
+      returns (CreateOrganizationResponse);
+  rpc GetOrganization(GetOrganizationRequest)
+      returns (GetOrganizationResponse);
+  rpc ListOrganizations(ListOrganizationsRequest)
+      returns (ListOrganizationsResponse);
+  rpc UpdateOrganization(UpdateOrganizationRequest)
+      returns (UpdateOrganizationResponse);
+  rpc DeleteOrganization(DeleteOrganizationRequest)
+      returns (DeleteOrganizationResponse);
+}
+
+service UserAuthService {
+  rpc CreateUser(CreateUserRequest)
+      returns (CreateUserResponse);
+  rpc GetUser(GetUserRequest)
+      returns (GetUserResponse);
+  rpc ListUsers(ListUsersRequest)
+      returns (ListUsersResponse);
+  rpc UpdateUser(UpdateUserRequest)
+      returns (UpdateUserResponse);
+  rpc DeleteUser(DeleteUserRequest)
+      returns (DeleteUserResponse);
+}
+
+message ExchangeCredentialRequest {
+  string credential_base64 = 1;
+}
+
+message ExchangeCredentialResponse {
+  string access_token = 1;
+  int64 expires_at_unix = 2;
+  string token_type = 3;
+  string key_id = 4;
+  string key_prefix = 5;
+}
+
+message LoginRequest {
+  string organization = 1;
+  string user_name = 2;
+  string password = 3;
+}
+
+message LoginResponse {
+  string access_token = 1;
+  int64 access_token_expires_at_unix = 2;
+  string refresh_token = 3;
+  int64 refresh_token_expires_at_unix = 4;
+  string token_type = 5;
+  User user = 6;
+}
+
+message RefreshTokenRequest {
+  string refresh_token = 1;
+}
+
+message RefreshTokenResponse {
+  string access_token = 1;
+  int64 access_token_expires_at_unix = 2;
+  string refresh_token = 3;
+  int64 refresh_token_expires_at_unix = 4;
+  string token_type = 5;
+  User user = 6;
+}
+
+message ExchangeSystemCredentialRequest {
+  string credential = 1;
+}
+
+message ExchangeSystemCredentialResponse {
+  string access_token = 1;
+  int64 access_token_expires_at_unix = 2;
+  string token_type = 3;
+  string organization = 4;
+  string user_name = 5;
+}
+
+enum UserRole {
+  USER_ROLE_UNSPECIFIED = 0;
+  USER_ROLE_ADMINISTRATORS = 1;
+  USER_ROLE_NORMAL_USERS = 2;
+}
+
+// Business identity, orthogonal to UserRole (privilege). See
+// docs/design/abac-design.md §3. Service accounts always carry
+// USER_CLASS_UNSPECIFIED; every HUMAN user must have one of the
+// concrete classes per ck_users_admin_class_consistency /
+// ck_users_normal_class_consistency / ck_users_service_account_class
+// in migration 0018.
+enum UserClass {
+  USER_CLASS_UNSPECIFIED = 0;
+  USER_CLASS_SYSTEM_ADMIN = 1;
+  USER_CLASS_ORG_ADMIN = 2;
+  USER_CLASS_ANNOTATOR = 3;
+  USER_CLASS_REVIEWER = 4;
+  USER_CLASS_VIEWER = 5;
+}
+
+message User {
+  string organization = 1;
+  string user_name = 2;
+  UserRole role = 3;
+  google.protobuf.Timestamp last_login_at = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+  UserClass user_class = 7;
+  int64 organization_id = 8;
+  int64 user_id = 9;
+}
+
+message Organization {
+  string organization = 1;
+  string display_name = 2;
+  google.protobuf.Timestamp created_at = 3;
+  google.protobuf.Timestamp updated_at = 4;
+}
+
+message Site {
+  int64 site_id = 1;
+  string name = 2;
+  int32 status = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp updated_at = 5;
+}
+
+message ApiKey {
+  int64 site_id = 1;
+  string key_id = 2;
+  string key_prefix = 3;
+  int32 status = 4;
+  google.protobuf.Timestamp expired_at = 5;
+  google.protobuf.Timestamp last_used_at = 6;
+}
+
+message CreateSiteRequest {
+  string name = 1;
+  int32 status = 2;
+}
+
+message CreateSiteResponse {
+  Site site = 1;
+}
+
+message GetSiteRequest {
+  int64 site_id = 1;
+}
+
+message GetSiteResponse {
+  Site site = 1;
+}
+
+message ListSitesRequest {}
+
+message ListSitesResponse {
+  repeated Site sites = 1;
+}
+
+message EnableSiteRequest {
+  int64 site_id = 1;
+}
+
+message EnableSiteResponse {
+  Site site = 1;
+}
+
+message DisableSiteRequest {
+  int64 site_id = 1;
+}
+
+message DisableSiteResponse {
+  Site site = 1;
+}
+
+message UpdateSiteRequest {
+  int64 site_id = 1;
+  optional string name = 2;
+  optional int32 status = 3;
+}
+
+message UpdateSiteResponse {
+  Site site = 1;
+}
+
+message DeleteSiteRequest {
+  int64 site_id = 1;
+}
+
+message DeleteSiteResponse {}
+
+message CreateApiKeyRequest {
+  int64 site_id = 1;
+  string key_id = 2;
+  string key_prefix = 3;
+  int32 status = 4;
+  google.protobuf.Timestamp expired_at = 5;
+  bool rotate_if_exists = 6;
+}
+
+message CreateApiKeyResponse {
+  string credential_base64 = 1;
+}
+
+message GetApiKeyRequest {
+  int64 site_id = 1;
+  string key_id = 2;
+}
+
+message GetApiKeyResponse {
+  ApiKey api_key = 1;
+}
+
+message ListApiKeysRequest {
+  int64 site_id = 1;
+}
+
+message ListApiKeysResponse {
+  repeated ApiKey api_keys = 1;
+}
+
+message EnableApiKeyRequest {
+  int64 site_id = 1;
+  string key_id = 2;
+}
+
+message EnableApiKeyResponse {
+  ApiKey api_key = 1;
+}
+
+message DisableApiKeyRequest {
+  int64 site_id = 1;
+  string key_id = 2;
+}
+
+message DisableApiKeyResponse {
+  ApiKey api_key = 1;
+}
+
+message UpdateApiKeyRequest {
+  int64 site_id = 1;
+  string key_id = 2;
+  optional string key_prefix = 3;
+  optional string site_secret = 4;
+  optional int32 status = 5;
+  google.protobuf.Timestamp expired_at = 6;
+  bool clear_expired_at = 7;
+}
+
+message UpdateApiKeyResponse {
+  ApiKey api_key = 1;
+}
+
+message DeleteApiKeyRequest {
+  int64 site_id = 1;
+  string key_id = 2;
+}
+
+message DeleteApiKeyResponse {}
+
+message CreateOrganizationRequest {
+  string organization = 1;
+  string display_name = 2;
+  string bootstrap_admin_user_name = 3;
+  string bootstrap_admin_password = 4;
+}
+
+message CreateOrganizationResponse {
+  Organization organization = 1;
+  User bootstrap_admin = 2;
+}
+
+message GetOrganizationRequest {
+  string organization = 1;
+}
+
+message GetOrganizationResponse {
+  Organization organization = 1;
+}
+
+message ListOrganizationsRequest {}
+
+message ListOrganizationsResponse {
+  repeated Organization organizations = 1;
+}
+
+message UpdateOrganizationRequest {
+  string organization = 1;
+  optional string display_name = 2;
+}
+
+message UpdateOrganizationResponse {
+  Organization organization = 1;
+}
+
+message DeleteOrganizationRequest {
+  string organization = 1;
+}
+
+message DeleteOrganizationResponse {}
+
+message CreateUserRequest {
+  string user_name = 1;
+  string password = 2;
+  UserRole role = 3;
+  // Required for HUMAN users; service accounts carry
+  // USER_CLASS_UNSPECIFIED implicitly. Server validates the
+  // (role, account_kind, user_class) tuple per
+  // docs/design/abac-design.md §3.3.
+  UserClass user_class = 4;
+}
+
+message CreateUserResponse {
+  User user = 1;
+}
+
+message GetUserRequest {
+  string user_name = 1;
+}
+
+message GetUserResponse {
+  User user = 1;
+}
+
+message ListUsersRequest {}
+
+message ListUsersResponse {
+  repeated User users = 1;
+}
+
+message UpdateUserRequest {
+  string user_name = 1;
+  optional string password = 2;
+  optional UserRole role = 3;
+  // Optional: change the business identity. Server rejects the
+  // update if the resulting (role, account_kind, user_class) tuple
+  // violates the consistency constraints in
+  // docs/design/abac-design.md §3.3.
+  optional UserClass user_class = 4;
+}
+
+message UpdateUserResponse {
+  User user = 1;
+}
+
+message DeleteUserRequest {
+  string user_name = 1;
+}
+
+message DeleteUserResponse {}
+
+enum AuthErrorCode {
+  AUTH_ERROR_CODE_UNSPECIFIED = 0;
+  AUTH_ERROR_CODE_INVALID_CREDENTIAL = 1;
+  AUTH_ERROR_CODE_KEY_DISABLED = 2;
+  AUTH_ERROR_CODE_KEY_EXPIRED = 3;
+  AUTH_ERROR_CODE_SITE_DISABLED = 4;
+  AUTH_ERROR_CODE_INTERNAL_ERROR = 5;
+}

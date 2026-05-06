@@ -1,0 +1,215 @@
+import DGWControlPlane
+import DGWOss
+import DGWProto
+import DGWStore
+import Foundation
+import Testing
+
+@testable import DataGatewayClient
+
+@Test func fromArchebaseConfigRejectsMissingConfig() async throws {
+    let root = try temporaryRoot()
+    let configURL = root.appendingPathComponent("archebase-config.json")
+
+    let error = await #expect(throws: DataGatewayClientError.self) {
+        _ = try await DataGatewayClient.fromArchebaseConfig(
+            configURL: configURL,
+            persistRootURL: root
+        )
+    }
+
+    #expect(error == .notInitialized(configURL: configURL.standardizedFileURL))
+}
+
+@Test func fromArchebaseConfigBuildsPublicEndpointClient() async throws {
+    let root = try temporaryRoot()
+    let configURL = root.appendingPathComponent("archebase-config.json")
+    let config = try ArchebaseConfig(apiKey: "credential-base64", tags: ["device": "robot"])
+    try await ArchebaseConfigStore(configURL: configURL).initialize(config)
+
+    _ = try await DataGatewayClient.fromArchebaseConfig(configURL: configURL, persistRootURL: root)
+}
+
+@Test func rawTagsMergerMergesConfigAndUploadTags() throws {
+    let merged = try RawTagsMerger.merge(
+        configTags: ["device": "robot", "site": "shanghai"],
+        uploadRawTags: ["scene": "pick"]
+    )
+
+    #expect(merged == ["device": "robot", "site": "shanghai", "scene": "pick"])
+}
+
+@Test func rawTagsMergerAcceptsSameKeySameValue() throws {
+    let merged = try RawTagsMerger.merge(
+        configTags: ["device": "robot"],
+        uploadRawTags: ["device": "robot", "scene": "pick"]
+    )
+
+    #expect(merged == ["device": "robot", "scene": "pick"])
+}
+
+@Test func rawTagsMergerRejectsSameKeyDifferentValue() {
+    let error = #expect(throws: DataGatewayClientError.self) {
+        _ = try RawTagsMerger.merge(
+            configTags: ["device": "robot"],
+            uploadRawTags: ["device": "camera"]
+        )
+    }
+
+    #expect(error == .rawTagConflict(key: "device"))
+}
+
+@Test func rawTagsMergerRejectsTooManyTags() {
+    let configTags = Dictionary(uniqueKeysWithValues: (0 ..< 256).map { ("c\($0)", "v") })
+
+    let error = #expect(throws: DataGatewayClientError.self) {
+        _ = try RawTagsMerger.merge(configTags: configTags, uploadRawTags: ["extra": "v"])
+    }
+
+    #expect(error == .invalidConfiguration("raw_tags exceeds the allowed maximum item count of 256"))
+}
+
+@Test func rawTagsMergerAddsSourceFileNameTags() throws {
+    let sourceURL = URL(fileURLWithPath: "/captures/raw/demo.mcap")
+
+    let merged = try RawTagsMerger.merge(configTags: [:], uploadRawTags: [:], sourceFileURL: sourceURL)
+
+    #expect(merged[RawTagsMerger.sourceFileNameRawTagKey] == "demo.mcap")
+}
+
+@Test func rawTagsMergerRejectsConflictingSourceFileNameTag() {
+    let sourceURL = URL(fileURLWithPath: "/captures/raw/demo.mcap")
+
+    let error = #expect(throws: DataGatewayClientError.self) {
+        _ = try RawTagsMerger.merge(
+            configTags: [:],
+            uploadRawTags: [RawTagsMerger.sourceFileNameRawTagKey: "other.mcap"],
+            sourceFileURL: sourceURL
+        )
+    }
+
+    #expect(error == .rawTagConflict(key: RawTagsMerger.sourceFileNameRawTagKey))
+}
+
+@Test func uploadPersistsMergedConfigTags() async throws {
+    let root = try temporaryRoot()
+    let sourceURL = root.appendingPathComponent("demo.bin")
+    try Data("robot-data".utf8).write(to: sourceURL)
+    let stateStore = UploadStateStore(persistRoot: root)
+    let gateway = RecordingGatewayClient()
+    let coordinator = UploadCoordinator(
+        executionPolicy: makeTestExecutionPolicy(),
+        dependencies: UploadCoordinatorDependencies(
+            gatewayClient: gateway,
+            stateStore: stateStore,
+            fileCoordinator: FileStagingCoordinator(stagingRoot: root.appendingPathComponent("staging", isDirectory: true)),
+            ossClientFactory: { _ in FakeMultipartSession() }
+        )
+    )
+    let client = DataGatewayClient(uploadCoordinator: coordinator, configTags: ["device": "robot"])
+
+    _ = try await client.upload(
+        UploadRequest(fileURL: sourceURL, clientHints: [:], rawTags: ["scene": "pick"], displayName: nil)
+    )
+
+    #expect(await gateway.completedRawTags == [
+        "device": "robot",
+        "scene": "pick",
+        RawTagsMerger.sourceFileNameRawTagKey: "demo.bin",
+    ])
+    let pending = try await stateStore.listPendingUploads()
+    #expect(pending.isEmpty)
+}
+
+private func temporaryRoot() throws -> URL {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("archebase-client-config-tests", isDirectory: true)
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    return root
+}
+
+private func makeTestExecutionPolicy() -> UploadExecutionPolicy {
+    UploadExecutionPolicy(
+        maxRestartCount: 1,
+        autoResumeByFileURL: true,
+        reconcileRemotePartsOnResume: true,
+        cleanupOnTerminalFailure: true,
+        credentialRefreshSkew: .seconds(30),
+        persistence: LocalPersistencePolicy(
+            keepTerminalSnapshot: true,
+            keepCompletedSnapshot: false,
+            completedSnapshotTTL: .seconds(0),
+            terminalSnapshotTTL: .seconds(3600),
+            copyExternalFileIntoManagedStaging: true
+        )
+    )
+}
+
+private actor RecordingGatewayClient: UploadCoordinatorGatewayClient {
+    private(set) var completedRawTags: [String: String] = [:]
+
+    func createLogicalUpload(
+        clientHints: [String : String],
+        restartFromUploadID: String?
+    ) async throws -> Archebase_DataGateway_V1_CreateLogicalUploadResponse {
+        var credentials = Archebase_DataGateway_V1_UploadCredentials()
+        credentials.bucket = "bucket"
+        credentials.endpoint = "https://oss.example.com"
+        credentials.objectKey = "objects/upload-1"
+        credentials.stsAccessKeyID = "ak"
+        credentials.stsAccessKeySecret = "sk"
+        credentials.stsSecurityToken = "token"
+        credentials.stsExpireAtUnix = Int64(Date().addingTimeInterval(3600).timeIntervalSince1970)
+        credentials.partSizeBytes = 1024
+
+        var response = Archebase_DataGateway_V1_CreateLogicalUploadResponse()
+        response.logicalUploadID = "logical-1"
+        response.uploadID = "upload-1"
+        response.credentials = credentials
+        return response
+    }
+
+    func getUploadRecovery(logicalUploadID: String) async throws -> Archebase_DataGateway_V1_GetUploadRecoveryResponse {
+        throw DataGatewayClientError.resumeNotPossible("not used")
+    }
+
+    func reissueUploadCredentials(uploadID: String) async throws -> Archebase_DataGateway_V1_ReissueUploadCredentialsResponse {
+        throw DataGatewayClientError.resumeNotPossible("not used")
+    }
+
+    func abortUpload(logicalUploadID: String, reason: String) async throws -> Archebase_DataGateway_V1_AbortUploadResponse {
+        Archebase_DataGateway_V1_AbortUploadResponse()
+    }
+
+    func completeUpload(
+        uploadID: String,
+        fileSize: Int64,
+        rawTags: [String : String],
+        completedPartCount: Int32,
+        ossObjectEtag: String
+    ) async throws -> Archebase_DataGateway_V1_CompleteUploadResponse {
+        self.completedRawTags = rawTags
+        return Archebase_DataGateway_V1_CompleteUploadResponse()
+    }
+}
+
+private actor FakeMultipartSession: UploadCoordinatorMultipartSessionProtocol {
+    func ensureFreshCredentialsIfNeeded() async throws -> Bool { false }
+
+    func lastKnownCredentialExpiration() async -> Date? { nil }
+
+    func initiateMultipartUpload() async throws -> String { "multipart-1" }
+
+    func uploadPart(multipartUploadID: String, partNumber: Int, body: Data) async throws -> UploadedPartDescriptor {
+        UploadedPartDescriptor(partNumber: partNumber, etag: "\"etag-\(partNumber)\"", size: Int64(body.count), lastModified: nil, hashCRC64: nil)
+    }
+
+    func listParts(multipartUploadID: String) async throws -> [UploadedPartDescriptor] { [] }
+
+    func headObjectETag() async throws -> String { "\"etag-object\"" }
+
+    func completeMultipartUpload(multipartUploadID: String, parts: [UploadedPartDescriptor]) async throws -> String {
+        "\"etag-object\""
+    }
+}
