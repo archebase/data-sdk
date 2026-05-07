@@ -28,7 +28,7 @@ SDK 提供以下能力：
 | macOS 开发环境 | `>= 15` 推荐 |
 | 并发模型 | Swift Concurrency，主要 API 使用 `async throws` 和 `AsyncThrowingStream` |
 
-SDK 固定使用 Archebase 公共 HTTPS 服务域名，App 不需要也不能在 public API 中传入认证、上传网关或设备初始化端点。
+SDK 使用资源文件定义 Archebase 公共服务端点，App 不需要也不能在 public API 中传入认证、上传网关或设备初始化端点。
 
 ## 3. 接入前需要准备
 
@@ -56,13 +56,13 @@ DGWStore
 
 ### 4.2 Package.swift 接入
 
-本 repo 是多语言布局，Swift package 根目录是 `data-sdk/swift`。SwiftPM 的 Git 依赖要求 `Package.swift` 位于被依赖 repo 根目录；如果需要远端 URL 接入，请将 `swift/` 发布或镜像为独立 Swift package repo。
+本 repo 根目录就是标准 SwiftPM package 根目录，`Package.swift` 位于 `data-sdk/Package.swift`。宿主 App 可以直接通过 Git URL 或本地 path 依赖本 repo。
 
-独立 Swift package repo 远端包示例：
+远端包示例：
 
 ```swift
 dependencies: [
-    .package(url: "https://<swift-sdk-git-url>.git", from: "0.1.0")
+    .package(url: "https://github.com/<org>/data-sdk.git", from: "0.1.0")
 ]
 ```
 
@@ -70,20 +70,20 @@ dependencies: [
 
 ```swift
 dependencies: [
-    .package(path: "../data-sdk/swift")
+    .package(path: "../data-sdk")
 ]
 ```
 
-target 依赖示例。以下 `package: "swift"` 匹配上面的本地 path 示例；如果使用独立远端 repo，请替换为 SwiftPM 解析出的 package identity。
+target 依赖示例。`package` 参数使用 SwiftPM package identity；Git URL 和上面的本地 path 示例通常解析为 `data-sdk`。
 
 ```swift
 targets: [
     .target(
         name: "YourAppCore",
         dependencies: [
-            .product(name: "DataGatewayClient", package: "swift"),
-            .product(name: "DGWControlPlane", package: "swift"),
-            .product(name: "DGWStore", package: "swift")
+            .product(name: "DataGatewayClient", package: "data-sdk"),
+            .product(name: "DGWControlPlane", package: "data-sdk"),
+            .product(name: "DGWStore", package: "data-sdk")
         ]
     )
 ]
@@ -158,19 +158,7 @@ print(deviceConfig.tags)
 2. 本地已经存在配置文件时，抛出 `DataGatewayClientError.alreadyInitialized(configURL:)`。
 3. 写入成功后返回 `ArchebaseConfig`，其中包含 `API Key` 和设备 tags。
 
-默认构建固定使用生产公共初始化端点：
-
-```text
-https://init-device.platform.archebase.ai
-```
-
-如果编译 Swift target 时定义 `DEV`，初始化端点会切换为：
-
-```text
-https://dev-init-device.platform.archebase.ai
-```
-
-App 不需要自行配置初始化端点。
+初始化端点来自 `DataGatewayClient` target 的必需资源文件 `PublicEndpoints.json` 中的 `deviceInit` 配置。App 不需要在运行时自行配置初始化端点。
 
 ### 7.2 重新初始化
 
@@ -249,27 +237,45 @@ let config = DataGatewayClientConfig.recommended(
 let client = try DataGatewayClient(config: config)
 ```
 
-### 8.3 固定公共服务域名
+### 8.3 公共服务端点资源
 
-SDK 内置以下公共 HTTPS 服务域名。默认构建使用生产域名；如果编译 Swift target 时定义 `DEV`，SDK 会在三个 hostname 前增加 `dev-` 前缀。URL 中不显式指定端口，HTTPS 默认端口为 `443`。
+认证、上传网关和设备初始化端点全部来自 SwiftPM 资源文件：
 
-| 服务 | 默认域名 | `-DDEV` 域名 |
-|---|---|---|
-| 认证 | `https://auth.platform.archebase.ai` | `https://dev-auth.platform.archebase.ai` |
-| 上传网关 | `https://gateway.platform.archebase.ai` | `https://dev-gateway.platform.archebase.ai` |
-| 设备初始化 | `https://init-device.platform.archebase.ai` | `https://dev-init-device.platform.archebase.ai` |
+资源文件路径：
 
-SwiftPM 命令行启用 dev 域名示例：
-
-```bash
-cd data-sdk/swift
-swift build -Xswiftc -DDEV
-swift test -Xswiftc -DDEV
+```text
+Sources/DataGatewayClient/Resources/PublicEndpoints.json
 ```
 
-Xcode 打开本地 Swift package 调试时，可在 package target 的 `Other Swift Flags` 中加入 `-DDEV`。
+`Package.swift` 会精确处理这个文件；如果文件不存在，`swift build` 或 `swift test` 会在构建阶段失败。资源文件存在但格式不合法时，SDK 在解析端点时会失败。
 
-公共 DNS 集成测试脚本默认准备生产域名。如果要测试 `-DDEV` 构建，请在运行 `swift/Scripts/public_dns_path_test.sh` 或 `swift/Scripts/simulator_smoke.sh` 时同时设置 `DGW_PUBLIC_DNS_DEV=1`。
+示例：
+
+```json
+{
+  "auth": { "scheme": "http", "host": "nlb-example.cn-shanghai.nlb.aliyuncsslb.com", "port": 50051 },
+  "gateway": { "scheme": "http", "host": "nlb-example.cn-shanghai.nlb.aliyuncsslb.com", "port": 50053 },
+  "deviceInit": { "scheme": "http", "host": "nlb-example.cn-shanghai.nlb.aliyuncsslb.com", "port": 50057 }
+}
+```
+
+字段说明：
+
+| 字段 | 说明 |
+|---|---|
+| `scheme` | 只允许 `http` 或 `https` |
+| `host` | DNS hostname、IPv4 或 IPv6，不包含 scheme 和 port |
+| `port` | `1...65535` 的整数 |
+
+`http` 会使用 plaintext gRPC 连接，`https` 会使用 TLS gRPC 连接。认证、上传网关和设备初始化可以分别指定不同的 `scheme`、`host` 和 `port`。
+
+SwiftPM 命令行构建示例：
+
+```bash
+cd data-sdk
+swift build
+swift test
+```
 
 App 只负责提供 `deviceID`、本地配置文件路径、上传持久化目录和凭证来源。
 
@@ -863,6 +869,7 @@ public enum PersistedUploadPhase: String, Codable, Sendable, Equatable {
 
 ### 18.5 Configuration Types
 
+```swift
 public struct DataGatewayClientConfig: Sendable {
     public static func recommended(
         credentialBase64: String,
@@ -948,7 +955,7 @@ public enum DataGatewayClientError: Error, Sendable, Equatable {
 
 ## 19. 上线前检查清单
 
-1. 确认 App 网络环境可以访问 SDK 内置的 Archebase 公共 HTTPS 域名。
+1. 确认 `Sources/DataGatewayClient/Resources/PublicEndpoints.json` 中的认证、上传网关和设备初始化端点正确，App 网络环境可以访问这些端点。
 2. `archebase-config.json` 写入 App 私有目录，不进入日志、备份导出或共享容器。
 3. App 支持首次初始化、已初始化跳过、重新初始化和初始化失败提示。
 4. 上传 UI 支持进度、成功、失败、重试、恢复和取消。

@@ -3,23 +3,22 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PACKAGE_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-REPO_ROOT="$(cd "$PACKAGE_ROOT/.." && pwd)"
-PROTO_ROOT="$REPO_ROOT/protos"
+PROTO_ROOT="$PACKAGE_ROOT/protos"
 OUT_DIR="$PACKAGE_ROOT/Sources/DGWProto/Generated"
-TOOL_BIN="$REPO_ROOT/.local/toolchains/swift-proto/bin"
+TOOL_BIN="$PACKAGE_ROOT/.local/toolchains/swift-proto/bin"
 
 SWIFT_PLUGIN="$TOOL_BIN/protoc-gen-swift"
 GRPC_PLUGIN="$TOOL_BIN/protoc-gen-grpc-swift-2"
 
 if [[ ! -x "$SWIFT_PLUGIN" ]]; then
   echo "missing executable: $SWIFT_PLUGIN" >&2
-  echo "run swift/Scripts/bootstrap_swift_proto_toolchain.sh first" >&2
+  echo "run Scripts/bootstrap_swift_proto_toolchain.sh first" >&2
   exit 1
 fi
 
 if [[ ! -x "$GRPC_PLUGIN" ]]; then
   echo "missing executable: $GRPC_PLUGIN" >&2
-  echo "run swift/Scripts/bootstrap_swift_proto_toolchain.sh first" >&2
+  echo "run Scripts/bootstrap_swift_proto_toolchain.sh first" >&2
   exit 1
 fi
 

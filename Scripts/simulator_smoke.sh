@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-PACKAGE_DIR="${ROOT_DIR}/swift"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PACKAGE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PUBLIC_ENDPOINTS_RESOURCE="${DGW_PUBLIC_ENDPOINTS_RESOURCE:-${PACKAGE_DIR}/Sources/DataGatewayClient/Resources/PublicEndpoints.json}"
 SCHEME="${DGW_IOS_SMOKE_SCHEME:-SwiftDataGatewayClient-Package}"
 DESTINATION="${DGW_IOS_SMOKE_DESTINATION:-platform=iOS Simulator,name=iPhone 17}"
 DESTINATION_TIMEOUT_SECONDS="${DGW_IOS_SMOKE_DESTINATION_TIMEOUT_SECONDS:-30}"
@@ -10,13 +11,33 @@ CHECK_COMMAND_TIMEOUT_SECONDS="${DGW_IOS_SMOKE_CHECK_COMMAND_TIMEOUT_SECONDS:-60
 DEFAULT_TEST_TIMEOUT_SECONDS="${DGW_IOS_SMOKE_DEFAULT_TEST_TIMEOUT_SECONDS:-120}"
 MAX_TEST_TIMEOUT_SECONDS="${DGW_IOS_SMOKE_MAX_TEST_TIMEOUT_SECONDS:-300}"
 OTHER_SWIFT_FLAGS_VALUE="${DGW_IOS_SMOKE_OTHER_SWIFT_FLAGS:-}"
-if [[ "${DGW_PUBLIC_DNS_DEV:-}" == "1" ]]; then
-  OTHER_SWIFT_FLAGS_VALUE="${OTHER_SWIFT_FLAGS_VALUE:+${OTHER_SWIFT_FLAGS_VALUE} }-DDEV"
-fi
 XCODEBUILD_BUILD_SETTINGS=()
 if [[ -n "$OTHER_SWIFT_FLAGS_VALUE" ]]; then
   XCODEBUILD_BUILD_SETTINGS+=(OTHER_SWIFT_FLAGS="$OTHER_SWIFT_FLAGS_VALUE")
 fi
+
+read_public_endpoint_field() {
+  python3 - "$PUBLIC_ENDPOINTS_RESOURCE" "$1" "$2" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+service = sys.argv[2]
+field = sys.argv[3]
+payload = json.loads(path.read_text())
+endpoint = payload[service]
+value = endpoint.get(field)
+if field == "scheme" and value is None:
+    value = endpoint.get("schema")
+if value is None:
+    raise SystemExit(f"missing {service}.{field} in {path}")
+if field == "scheme":
+    value = str(value).lower()
+print(value)
+PY
+}
+
 if [[ "${DGW_IOS_SMOKE_PUBLIC_PATH:-}" == "1" ]]; then
   SMOKE_TEST_ONE="${DGW_IOS_SMOKE_TEST_ONE:-DataGatewayClientIntegrationTests/LocalStackHarnessTests/publicPathCanExchangeForBearerToken()}"
   SMOKE_TEST_TWO="${DGW_IOS_SMOKE_TEST_TWO:-DataGatewayClientIntegrationTests/LocalStackHarnessTests/publicPathRuntimeBootstrapAndControlPlaneFlow()}"
@@ -30,7 +51,7 @@ DERIVED_DATA_PATH="${DGW_IOS_SMOKE_DERIVED_DATA_PATH:-$(mktemp -d /tmp/swift-dgw
 
 usage() {
   cat <<'EOF'
-Usage: swift/Scripts/simulator_smoke.sh [--check-only] [--list-destinations]
+Usage: Scripts/simulator_smoke.sh [--check-only] [--list-destinations]
 
 Options:
   --check-only        Validate the package scheme and simulator SDK prerequisites without running tests.
@@ -48,9 +69,9 @@ Environment overrides:
   DGW_IOS_SMOKE_TEST_TWO
   DGW_IOS_SMOKE_TEST_THREE
   DGW_IOS_SMOKE_DERIVED_DATA_PATH
-  DGW_IOS_SMOKE_PUBLIC_PATH=1 (use fixed public endpoint tests)
+  DGW_IOS_SMOKE_PUBLIC_PATH=1 (use resource-defined public endpoint tests)
   DGW_IOS_SMOKE_OTHER_SWIFT_FLAGS (extra xcodebuild OTHER_SWIFT_FLAGS)
-  DGW_PUBLIC_DNS_DEV=1 (use dev-prefixed public domains and compile with -DDEV)
+  DGW_PUBLIC_ENDPOINTS_RESOURCE (alternate PublicEndpoints.json for public path readiness checks)
 
 Required environment for real smoke execution:
   DGW_LOCAL_AUTH_ENDPOINT (local mode only)
@@ -63,8 +84,7 @@ Required environment for real smoke execution:
 Notes:
   - The script runs Swift package tests on the `SwiftDataGatewayClient-Package` scheme.
   - Local mode uses `build-for-testing` + patched `.xctestrun` so simulator-hosted tests receive `DGW_LOCAL_*` environment variables.
-  - Public path mode does not inject auth/gateway/init endpoints. Prepare hosts and local TLS trust with `public_dns_path_test.sh` first.
-  - For DEV public path mode, set DGW_PUBLIC_DNS_DEV=1 for both this script and public_dns_path_test.sh.
+  - Public path mode does not inject auth/gateway/init endpoints. Prepare hosts and local TLS trust with `Scripts/public_dns_path_test.sh` first.
   - Swift Testing method filters must include `()` in the final test identifier.
   - xcodebuild test timeouts are enabled so hangs surface as bounded failures instead of endless runs.
 EOF
@@ -316,11 +336,8 @@ PY
 }
 
 require_public_path_ready() {
-  local domain_prefix=""
-  if [[ "${DGW_PUBLIC_DNS_DEV:-}" == "1" ]]; then
-    domain_prefix="dev-"
-  fi
-  for domain in "${domain_prefix}auth.platform.archebase.ai" "${domain_prefix}gateway.platform.archebase.ai" "${domain_prefix}init-device.platform.archebase.ai"; do
+  local domain
+  for domain in "$(read_public_endpoint_field auth host)" "$(read_public_endpoint_field gateway host)" "$(read_public_endpoint_field deviceInit host)"; do
     if ! grep -q "${domain}" /etc/hosts; then
       echo "${domain} is not mapped in /etc/hosts. Run public_dns_path_test.sh prepare-hosts first." >&2
       exit 1

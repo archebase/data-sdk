@@ -82,6 +82,9 @@ let package = Package(
                 "DGWProto",
                 "DGWStore",
                 .product(name: "GRPCCore", package: "grpc-swift-2"),
+            ],
+            resources: [
+                .process("Resources/PublicEndpoints.json"),
             ]
         ),
         .testTarget(
