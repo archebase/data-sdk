@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-PACKAGE_DIR="${ROOT_DIR}/swift"
-DEFAULT_DATA_PLATFORM_ROOT="$(cd "${ROOT_DIR}/../data-platform" 2>/dev/null && pwd || true)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PACKAGE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+WORKSPACE_DIR="$(cd "${PACKAGE_DIR}/.." && pwd)"
+DEFAULT_DATA_PLATFORM_ROOT="$(cd "${WORKSPACE_DIR}/data-platform" 2>/dev/null && pwd || true)"
 DATA_PLATFORM_ROOT="${DATA_PLATFORM_ROOT:-$DEFAULT_DATA_PLATFORM_ROOT}"
 DATA_PLATFORM_PROTO_ROOT="${DATA_PLATFORM_PROTO_ROOT:-${DATA_PLATFORM_ROOT}/common/proto}"
 
@@ -35,7 +36,7 @@ CURL_MAX_TIME_SECONDS="${DGW_LOCAL_BOOTSTRAP_MAX_TIME_SECONDS:-10}"
 
 usage() {
   cat <<'EOF'
-Usage: swift/Scripts/local_integration_bootstrap.sh [--start-stack] [--run-tests] [--print-env-only]
+Usage: Scripts/local_integration_bootstrap.sh [--start-stack] [--run-tests] [--print-env-only]
 
 Options:
   --start-stack      Build and deploy the local Rust stack before bootstrapping credentials.
@@ -213,6 +214,67 @@ EOF
     exit 1
   fi
   printf '%s\n' "$token"
+}
+
+bootstrap_devices_via_grpc() {
+  if ! command_exists grpcurl; then
+    echo "grpcurl is required when HTTP device routes are unavailable" >&2
+    exit 1
+  fi
+
+  local credential_base64="$1"
+  local site_id="$2"
+  local admin_token device_body device_response device_name device_id
+  local unbound_body unbound_response unbound_name unbound_device_id
+  local suite_body suite_response suite_name add_device_body add_device_response
+  admin_token=$(admin_bearer_token)
+
+  device_body=$(cat <<EOF
+{"displayName":$(json_string "$BOOTSTRAP_DEVICE_DISPLAY_NAME"),"description":$(json_string "$BOOTSTRAP_DEVICE_DESCRIPTION")}
+EOF
+)
+  device_response=$(grpc_call "$META_ENDPOINT" archebase.meta.v1.DeviceManagementService/RegisterDevice "$device_body" -H "Authorization: Bearer ${admin_token}")
+  device_name=$(read_json_field "$device_response" "name")
+  if [[ -z "$device_name" ]]; then
+    echo "failed to register device through grpc: $device_response" >&2
+    exit 1
+  fi
+  device_id="${device_name#devices/}"
+
+  unbound_body=$(cat <<EOF
+{"displayName":$(json_string "$BOOTSTRAP_UNBOUND_DEVICE_DISPLAY_NAME"),"description":$(json_string "$BOOTSTRAP_UNBOUND_DEVICE_DESCRIPTION")}
+EOF
+)
+  unbound_response=$(grpc_call "$META_ENDPOINT" archebase.meta.v1.DeviceManagementService/RegisterDevice "$unbound_body" -H "Authorization: Bearer ${admin_token}")
+  unbound_name=$(read_json_field "$unbound_response" "name")
+  if [[ -z "$unbound_name" ]]; then
+    echo "failed to register unbound device through grpc: $unbound_response" >&2
+    exit 1
+  fi
+  unbound_device_id="${unbound_name#devices/}"
+
+  suite_body=$(cat <<EOF
+{"siteId":$(json_string "$site_id"),"displayName":$(json_string "$BOOTSTRAP_SUITE_DISPLAY_NAME"),"description":$(json_string "$BOOTSTRAP_SUITE_DESCRIPTION")}
+EOF
+)
+  suite_response=$(grpc_call "$META_ENDPOINT" archebase.meta.v1.DeviceManagementService/CreateDeviceSuite "$suite_body" -H "Authorization: Bearer ${admin_token}")
+  suite_name=$(read_json_field "$suite_response" "name")
+  if [[ -z "$suite_name" ]]; then
+    echo "failed to create device suite through grpc: $suite_response" >&2
+    exit 1
+  fi
+
+  add_device_body=$(cat <<EOF
+{"suite":$(json_string "$suite_name"),"device":$(json_string "$device_name")}
+EOF
+)
+  add_device_response=$(grpc_call "$META_ENDPOINT" archebase.meta.v1.DeviceManagementService/AddDeviceToSuite "$add_device_body" -H "Authorization: Bearer ${admin_token}")
+  if [[ -n "$add_device_response" && "$add_device_response" != "{}" ]]; then
+    echo "failed to bind device to suite through grpc: $add_device_response" >&2
+    exit 1
+  fi
+
+  emit_exports "$credential_base64" "$device_id" "$unbound_device_id"
 }
 
 bootstrap_via_grpc() {
@@ -416,14 +478,19 @@ curl -fsS \
   --max-time "$CURL_MAX_TIME_SECONDS" \
   "${GATEWAY_HTTP_BASE%/}/healthz" >/dev/null
 
-if ! curl -fsS -o /dev/null \
+LOGIN_ROUTE_STATUS=$(curl -sS -o /dev/null -w '%{http_code}' \
   --connect-timeout "$CURL_CONNECT_TIMEOUT_SECONDS" \
   --max-time "$CURL_MAX_TIME_SECONDS" \
-  "${GATEWAY_HTTP_BASE%/}/api/dataplatform/v1/auth/login"; then
-  echo "HTTP admin gateway routes are unavailable at ${GATEWAY_HTTP_BASE}; falling back to grpc bootstrap" >&2
-  bootstrap_via_grpc
-  exit 0
-fi
+  "${GATEWAY_HTTP_BASE%/}/api/dataplatform/v1/auth/login" || true)
+case "$LOGIN_ROUTE_STATUS" in
+  200|204|400|401|403|405)
+    ;;
+  *)
+    echo "HTTP admin gateway routes are unavailable at ${GATEWAY_HTTP_BASE}; falling back to grpc bootstrap" >&2
+    bootstrap_via_grpc
+    exit 0
+    ;;
+esac
 
 LOGIN_BODY=$(cat <<EOF
 {"organization":$(json_string "$BOOTSTRAP_ORG"),"userName":$(json_string "$BOOTSTRAP_ADMIN_USER"),"password":$(json_string "$BOOTSTRAP_ADMIN_PASSWORD")}
@@ -483,6 +550,12 @@ DEVICE_RESPONSE=$(http_post "${GATEWAY_HTTP_BASE%/}/api/dataplatform/v1/devices:
   -b "$COOKIE_JAR")
 DEVICE_NAME=$(read_json_field "$DEVICE_RESPONSE" "name")
 if [[ -z "$DEVICE_NAME" ]]; then
+  DEVICE_ERROR_CODE=$(read_json_field "$DEVICE_RESPONSE" "code")
+  if [[ "$DEVICE_ERROR_CODE" == "5" ]]; then
+    echo "HTTP device routes are unavailable at ${GATEWAY_HTTP_BASE}; falling back to grpc device bootstrap" >&2
+    bootstrap_devices_via_grpc "$CREDENTIAL_BASE64" "$SITE_ID"
+    exit 0
+  fi
   echo "failed to register device: $DEVICE_RESPONSE" >&2
   exit 1
 fi

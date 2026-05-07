@@ -295,7 +295,12 @@ public actor UploadStateStore {
         try self.fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
 
         let temporaryURL = directory.appendingPathComponent("\(destination.lastPathComponent).tmp-\(UUID().uuidString)")
-        try data.write(to: temporaryURL, options: .completeFileProtectionUnlessOpen)
+        #if os(iOS) || os(tvOS) || os(watchOS) || os(visionOS)
+        let writeOptions: Data.WritingOptions = .completeFileProtectionUnlessOpen
+        #else
+        let writeOptions: Data.WritingOptions = []
+        #endif
+        try data.write(to: temporaryURL, options: writeOptions)
 
         if self.fileManager.fileExists(atPath: destination.path()) {
             _ = try self.fileManager.replaceItemAt(destination, withItemAt: temporaryURL)

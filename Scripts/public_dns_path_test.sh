@@ -1,24 +1,47 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-SDK_DIR="${ROOT_DIR}/swift"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SDK_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PUBLIC_ENDPOINTS_RESOURCE="${DGW_PUBLIC_ENDPOINTS_RESOURCE:-${SDK_DIR}/Sources/DataGatewayClient/Resources/PublicEndpoints.json}"
 MARKER_BEGIN="# archebase-swift-sdk-public-dns begin"
 MARKER_END="# archebase-swift-sdk-public-dns end"
 LOCAL_IP="${DGW_PUBLIC_DNS_LOCAL_IP:-127.0.0.1}"
-DOMAIN_PREFIX=""
-if [[ "${DGW_PUBLIC_DNS_DEV:-}" == "1" ]]; then
-  DOMAIN_PREFIX="dev-"
-fi
-AUTH_DOMAIN="${DOMAIN_PREFIX}auth.platform.archebase.ai"
-GATEWAY_DOMAIN="${DOMAIN_PREFIX}gateway.platform.archebase.ai"
-INIT_DOMAIN="${DOMAIN_PREFIX}init-device.platform.archebase.ai"
+
+read_public_endpoint_field() {
+  python3 - "$PUBLIC_ENDPOINTS_RESOURCE" "$1" "$2" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+service = sys.argv[2]
+field = sys.argv[3]
+payload = json.loads(path.read_text())
+endpoint = payload[service]
+value = endpoint.get(field)
+if field == "scheme" and value is None:
+    value = endpoint.get("schema")
+if value is None:
+    raise SystemExit(f"missing {service}.{field} in {path}")
+if field == "scheme":
+    value = str(value).lower()
+print(value)
+PY
+}
+
+AUTH_SCHEME=""
+GATEWAY_SCHEME=""
+INIT_SCHEME=""
+AUTH_DOMAIN=""
+GATEWAY_DOMAIN=""
+INIT_DOMAIN=""
+AUTH_PORT=""
+GATEWAY_PORT=""
+INIT_PORT=""
 AUTH_TARGET="${DGW_LOCAL_AUTH_ENDPOINT:-127.0.0.1:15055}"
 GATEWAY_TARGET="${DGW_LOCAL_GATEWAY_ENDPOINT:-127.0.0.1:15053}"
 INIT_TARGET="${DGW_LOCAL_INIT_ENDPOINT:-127.0.0.1:15057}"
-AUTH_TLS_PORT="${DGW_PUBLIC_AUTH_TLS_PORT:-443}"
-GATEWAY_TLS_PORT="${DGW_PUBLIC_GATEWAY_TLS_PORT:-8443}"
-INIT_TLS_PORT="${DGW_PUBLIC_INIT_TLS_PORT:-9443}"
 CERT_DIR="${DGW_PUBLIC_DNS_CERT_DIR:-${SDK_DIR}/.public-dns}"
 CERT_FILE="${CERT_DIR}/archebase-public-domains.crt"
 KEY_FILE="${CERT_DIR}/archebase-public-domains.key"
@@ -26,22 +49,23 @@ PID_DIR="${CERT_DIR}/pids"
 
 usage() {
   cat <<'USAGE'
-Usage: swift/Scripts/public_dns_path_test.sh <command>
+Usage: Scripts/public_dns_path_test.sh <command>
 
 Commands:
   prepare-hosts   Add marked /etc/hosts entries for Archebase public SDK domains.
-  start-proxies   Start local TLS TCP proxies for auth, gateway, and device init gRPC targets.
-  run-tests       Run gated Swift tests through the fixed public endpoint SDK path.
+  start-proxies   Start local TCP proxies for auth, gateway, and device init gRPC targets.
+  run-tests       Run gated Swift tests through the resource-defined public endpoint SDK path.
   cleanup         Stop proxies and remove marked /etc/hosts entries.
 
 Environment:
   DGW_PUBLIC_DNS_RUN=1 is required for prepare-hosts, start-proxies, and run-tests.
-  DGW_PUBLIC_DNS_DEV=1 prepares dev-prefixed domains and runs Swift tests with -DDEV.
+  DGW_PUBLIC_ENDPOINTS_RESOURCE can point to an alternate PublicEndpoints.json.
   DGW_LOCAL_AUTH_ENDPOINT, DGW_LOCAL_GATEWAY_ENDPOINT, and DGW_LOCAL_INIT_ENDPOINT point to local plaintext gRPC targets.
   DGW_LOCAL_CREDENTIAL_BASE64, DGW_LOCAL_DEVICE_ID, and DGW_LOCAL_PERSIST_ROOT are passed through to integration tests.
 
 Notes:
   This script is intentionally gated and does not affect normal swift test runs.
+  Endpoint hosts and ports are read from PublicEndpoints.json.
   prepare-hosts may require sudo because it edits /etc/hosts.
   start-proxies requires openssl and socat.
 USAGE
@@ -52,6 +76,18 @@ require_gated() {
     echo "DGW_PUBLIC_DNS_RUN=1 is required for this command" >&2
     exit 2
   fi
+}
+
+load_public_endpoints() {
+  AUTH_SCHEME="$(read_public_endpoint_field auth scheme)"
+  GATEWAY_SCHEME="$(read_public_endpoint_field gateway scheme)"
+  INIT_SCHEME="$(read_public_endpoint_field deviceInit scheme)"
+  AUTH_DOMAIN="$(read_public_endpoint_field auth host)"
+  GATEWAY_DOMAIN="$(read_public_endpoint_field gateway host)"
+  INIT_DOMAIN="$(read_public_endpoint_field deviceInit host)"
+  AUTH_PORT="$(read_public_endpoint_field auth port)"
+  GATEWAY_PORT="$(read_public_endpoint_field gateway port)"
+  INIT_PORT="$(read_public_endpoint_field deviceInit port)"
 }
 
 normalize_target() {
@@ -75,6 +111,7 @@ ensure_cert() {
 
 prepare_hosts() {
   require_gated
+  load_public_endpoints
   local block
   block="${MARKER_BEGIN}
 ${LOCAL_IP} ${AUTH_DOMAIN}
@@ -129,27 +166,44 @@ PY
 
 start_proxy() {
   local name="$1"
-  local listen_port="$2"
-  local target="$3"
+  local scheme="$2"
+  local listen_port="$3"
+  local target="$4"
   local pid_file="${PID_DIR}/${name}.pid"
   if [[ -f "$pid_file" ]] && kill -0 "$(cat "$pid_file")" >/dev/null 2>&1; then
     echo "${name} proxy already running on ${listen_port}"
     return
   fi
-  socat "OPENSSL-LISTEN:${listen_port},cert=${CERT_FILE},key=${KEY_FILE},reuseaddr,fork" "TCP:$(normalize_target "$target")" &
+  case "$scheme" in
+    https)
+      socat "OPENSSL-LISTEN:${listen_port},cert=${CERT_FILE},key=${KEY_FILE},reuseaddr,fork" "TCP:$(normalize_target "$target")" &
+      ;;
+    http)
+      socat "TCP-LISTEN:${listen_port},reuseaddr,fork" "TCP:$(normalize_target "$target")" &
+      ;;
+    *)
+      echo "Unsupported scheme for ${name}: ${scheme}" >&2
+      exit 2
+      ;;
+  esac
   echo "$!" > "$pid_file"
-  echo "Started ${name} TLS proxy on ${listen_port} -> $(normalize_target "$target")"
+  echo "Started ${name} ${scheme} proxy on ${listen_port} -> $(normalize_target "$target")"
 }
 
 start_proxies() {
   require_gated
-  command -v openssl >/dev/null || { echo "openssl is required" >&2; exit 2; }
+  load_public_endpoints
   command -v socat >/dev/null || { echo "socat is required" >&2; exit 2; }
-  ensure_cert
-  start_proxy auth "$AUTH_TLS_PORT" "$AUTH_TARGET"
-  start_proxy gateway "$GATEWAY_TLS_PORT" "$GATEWAY_TARGET"
-  start_proxy init "$INIT_TLS_PORT" "$INIT_TARGET"
-  echo "Trust ${CERT_FILE} locally before running TLS validation against these proxies."
+  if [[ "$AUTH_SCHEME" == "https" || "$GATEWAY_SCHEME" == "https" || "$INIT_SCHEME" == "https" ]]; then
+    command -v openssl >/dev/null || { echo "openssl is required" >&2; exit 2; }
+    ensure_cert
+  fi
+  start_proxy auth "$AUTH_SCHEME" "$AUTH_PORT" "$AUTH_TARGET"
+  start_proxy gateway "$GATEWAY_SCHEME" "$GATEWAY_PORT" "$GATEWAY_TARGET"
+  start_proxy init "$INIT_SCHEME" "$INIT_PORT" "$INIT_TARGET"
+  if [[ "$AUTH_SCHEME" == "https" || "$GATEWAY_SCHEME" == "https" || "$INIT_SCHEME" == "https" ]]; then
+    echo "Trust ${CERT_FILE} locally before running TLS validation against these proxies."
+  fi
 }
 
 stop_proxies() {
@@ -178,11 +232,7 @@ run_tests() {
   export DGW_OSS_TEST_ACCESS_KEY_SECRET="${DGW_OSS_TEST_ACCESS_KEY_SECRET:-placeholder}"
   export DGW_OSS_TEST_SECURITY_TOKEN="${DGW_OSS_TEST_SECURITY_TOKEN:-placeholder}"
   export DGW_OSS_TEST_OBJECT_PREFIX="${DGW_OSS_TEST_OBJECT_PREFIX:-swift-public-dns}"
-  if [[ "${DGW_PUBLIC_DNS_DEV:-}" == "1" ]]; then
-    (cd "$SDK_DIR" && swift test -Xswiftc -DDEV --filter LocalStackHarnessTests)
-  else
-    (cd "$SDK_DIR" && swift test --filter LocalStackHarnessTests)
-  fi
+  (cd "$SDK_DIR" && swift test --filter LocalStackHarnessTests)
 }
 
 case "${1:-}" in

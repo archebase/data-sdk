@@ -19,9 +19,10 @@
 7. 支持列出 `listPendingUploads()` 返回的本地待恢复任务。
 8. 支持调用 `resumeUpload(logicalUploadID:)`、`abortUpload(logicalUploadID:)`、`deleteLocalSnapshot(logicalUploadID:)`。
 
-建议模拟器 smoke 命令：
+建议从 package 根目录执行模拟器 smoke 命令：
 
 ```bash
+cd data-sdk
 export DGW_LOCAL_AUTH_ENDPOINT='http://127.0.0.1:15055'
 export DGW_LOCAL_GATEWAY_ENDPOINT='http://127.0.0.1:15053'
 export DGW_LOCAL_INIT_ENDPOINT='http://127.0.0.1:15057'

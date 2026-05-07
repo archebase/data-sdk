@@ -1,5 +1,7 @@
 .build/
 .swiftpm/
+.local/
+.public-dns/
 DerivedData/
 *.xcuserstate
 .DS_Store

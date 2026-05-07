@@ -96,25 +96,65 @@ func makePersistencePolicy(copyExternalFileIntoManagedStaging: Bool) -> LocalPer
     #expect(DataGatewayClientModule.name == "DataGatewayClient")
 }
 
-@Test func publicEndpointsMatchHardcodedContract() {
-    #if DEV
-    let hostPrefix = "dev-"
-    #else
-    let hostPrefix = ""
-    #endif
-
-    #expect(ArchebasePublicEndpoints.auth == URL(string: "https://\(hostPrefix)auth.platform.archebase.ai")!)
-    #expect(ArchebasePublicEndpoints.gateway == URL(string: "https://\(hostPrefix)gateway.platform.archebase.ai")!)
-    #expect(ArchebasePublicEndpoints.deviceInit == URL(string: "https://\(hostPrefix)init-device.platform.archebase.ai")!)
+@Test func publicEndpointsLoadRequiredResourceContract() {
+    for endpoint in [ArchebasePublicEndpoints.auth, ArchebasePublicEndpoints.gateway, ArchebasePublicEndpoints.deviceInit] {
+        #expect(endpoint.scheme == "http" || endpoint.scheme == "https")
+        #expect(endpoint.host?.isEmpty == false)
+        #expect(endpoint.port != nil)
+    }
 }
 
-@Test func publicClientConfigUsesFixedTlsEndpoints() throws {
+@Test func publicEndpointResourceParsesHttpAndHttpsValues() throws {
+    let payload = Data("""
+    {
+      "auth": { "schema": "http", "host": "nlb.example.com", "port": 50051 },
+      "gateway": { "scheme": "http", "host": "nlb.example.com", "port": 50053 },
+      "deviceInit": { "scheme": "https", "host": "init.example.com", "port": 443 }
+    }
+    """.utf8)
+
+    let endpoints = try ArchebasePublicEndpoints.decodeResource(payload)
+
+    #expect(endpoints.auth == URL(string: "http://nlb.example.com:50051")!)
+    #expect(endpoints.gateway == URL(string: "http://nlb.example.com:50053")!)
+    #expect(endpoints.deviceInit == URL(string: "https://init.example.com:443")!)
+    #expect(endpoints.authTLS == .plaintext)
+    #expect(endpoints.gatewayTLS == .plaintext)
+    #expect(endpoints.deviceInitTLS == .tls)
+}
+
+@Test func publicEndpointResourceRejectsInvalidSchemeAndPort() {
+    let invalidScheme = Data("""
+    {
+      "auth": { "scheme": "grpc", "host": "auth.example.com", "port": 50051 },
+      "gateway": { "scheme": "http", "host": "gateway.example.com", "port": 50053 },
+      "deviceInit": { "scheme": "http", "host": "init.example.com", "port": 50057 }
+    }
+    """.utf8)
+    let invalidPort = Data("""
+    {
+      "auth": { "scheme": "http", "host": "auth.example.com", "port": 0 },
+      "gateway": { "scheme": "http", "host": "gateway.example.com", "port": 50053 },
+      "deviceInit": { "scheme": "http", "host": "init.example.com", "port": 50057 }
+    }
+    """.utf8)
+
+    #expect(throws: DataGatewayClientError.self) {
+        try ArchebasePublicEndpoints.decodeResource(invalidScheme)
+    }
+    #expect(throws: DataGatewayClientError.self) {
+        try ArchebasePublicEndpoints.decodeResource(invalidPort)
+    }
+}
+
+@Test func publicClientConfigUsesResourceEndpointsAndDerivedTls() throws {
     let root = URL(fileURLWithPath: "/tmp/archebase-public-config", isDirectory: true)
     let config = DataGatewayClientConfig.recommended(credentialBase64: "credential-base64", persistRootURL: root)
 
     #expect(config.authEndpoint == ArchebasePublicEndpoints.auth)
     #expect(config.gatewayEndpoint == ArchebasePublicEndpoints.gateway)
-    #expect(config.tls == .tls)
+    #expect(config.authTLS == ArchebasePublicEndpoints.authTLS)
+    #expect(config.gatewayTLS == ArchebasePublicEndpoints.gatewayTLS)
     #expect(config.credentialBase64 == "credential-base64")
     #expect(config.persistRootURL == root)
     #expect(throws: Never.self) { try config.validate() }
@@ -125,7 +165,7 @@ func makePersistencePolicy(copyExternalFileIntoManagedStaging: Bool) -> LocalPer
     let config = DeviceInitClientConfig(configURL: configURL)
 
     #expect(config.configURL == configURL)
-    #expect(config.tls == .tls)
+    #expect(config.tls == ArchebasePublicEndpoints.deviceInitTLS)
 }
 
 private extension Dictionary {
