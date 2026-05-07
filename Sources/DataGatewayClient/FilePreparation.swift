@@ -16,133 +16,23 @@ public enum DataGatewayClientModule {
     public static let version = "0.1.0"
 }
 
-/// Archebase public service endpoints loaded from the required SDK resource.
-public enum ArchebasePublicEndpoints {
-    package struct Resolved: Sendable, Equatable {
-        package var auth: URL
-        package var gateway: URL
-        package var deviceInit: URL
-        package var authTLS: TLSMode
-        package var gatewayTLS: TLSMode
-        package var deviceInitTLS: TLSMode
-    }
-
-    /// Public authentication service endpoint.
-    public static var auth: URL { resolved.auth }
-
-    /// Public data gateway control-plane service endpoint.
-    public static var gateway: URL { resolved.gateway }
-
-    /// Public device initialization service endpoint.
-    public static var deviceInit: URL { resolved.deviceInit }
-
-    package static var authTLS: TLSMode { resolved.authTLS }
-    package static var gatewayTLS: TLSMode { resolved.gatewayTLS }
-    package static var deviceInitTLS: TLSMode { resolved.deviceInitTLS }
-
-    package static let resourceName = "PublicEndpoints"
-
-    private static let resolved = loadResource()
-
-    private static func loadResource() -> Resolved {
-        guard let url = Bundle.module.url(forResource: resourceName, withExtension: "json") else {
-            fatalError("missing \(resourceName).json resource")
-        }
-        do {
-            let data = try Data(contentsOf: url)
-            return try decodeResource(data)
-        } catch {
-            fatalError("invalid \(resourceName).json: \(error)")
-        }
-    }
-
-    package static func decodeResource(_ data: Data) throws -> Resolved {
-        let payload = try JSONDecoder().decode(ResourcePayload.self, from: data)
-        let auth = try payload.auth.resolvedURL(fieldName: "auth")
-        let gateway = try payload.gateway.resolvedURL(fieldName: "gateway")
-        let deviceInit = try payload.deviceInit.resolvedURL(fieldName: "deviceInit")
-        return Resolved(
-            auth: auth.url,
-            gateway: gateway.url,
-            deviceInit: deviceInit.url,
-            authTLS: auth.tls,
-            gatewayTLS: gateway.tls,
-            deviceInitTLS: deviceInit.tls
-        )
-    }
-
-    private struct ResourcePayload: Decodable {
-        var auth: ResourceEndpoint
-        var gateway: ResourceEndpoint
-        var deviceInit: ResourceEndpoint
-    }
-
-    private struct ResourceEndpoint: Decodable {
-        var scheme: String
-        var host: String
-        var port: Int
-
-        enum CodingKeys: String, CodingKey {
-            case scheme
-            case schema
-            case host
-            case port
-        }
-
-        init(from decoder: Decoder) throws {
-            let container = try decoder.container(keyedBy: CodingKeys.self)
-            self.scheme = try container.decodeIfPresent(String.self, forKey: .scheme)
-                ?? container.decode(String.self, forKey: .schema)
-            self.host = try container.decode(String.self, forKey: .host)
-            self.port = try container.decode(Int.self, forKey: .port)
-        }
-
-        func resolvedURL(fieldName: String) throws -> (url: URL, tls: TLSMode) {
-            let normalizedScheme = self.scheme.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            let tls: TLSMode
-            switch normalizedScheme {
-            case "http":
-                tls = .plaintext
-            case "https":
-                tls = .tls
-            default:
-                throw DataGatewayClientError.invalidConfiguration("\(fieldName).scheme must be http or https")
-            }
-
-            let normalizedHost = self.host.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !normalizedHost.isEmpty else {
-                throw DataGatewayClientError.invalidConfiguration("\(fieldName).host must not be empty")
-            }
-            guard (1 ... 65535).contains(self.port) else {
-                throw DataGatewayClientError.invalidConfiguration("\(fieldName).port must be between 1 and 65535")
-            }
-
-            var components = URLComponents()
-            components.scheme = normalizedScheme
-            components.host = normalizedHost
-            components.port = self.port
-            guard let url = components.url else {
-                throw DataGatewayClientError.invalidConfiguration("\(fieldName) endpoint is not a valid URL")
-            }
-            return (url, tls)
-        }
-    }
-}
-
 /// Public configuration for device initialization and reinitialization.
 public struct DeviceInitClientConfig: Sendable {
     public var configURL: URL
+    public var endpointsURL: URL
     public var requestTimeout: Duration
-    package var tls: TLSMode
+    package var tls: TLSMode?
 
-    /// Creates a device initialization configuration that uses the resource-defined public endpoint.
+    /// Creates a device initialization configuration that loads the runtime public endpoint.
     public init(
         configURL: URL,
+        endpointsURL: URL,
         requestTimeout: Duration = .seconds(10)
     ) {
         self.configURL = configURL
+        self.endpointsURL = endpointsURL
         self.requestTimeout = requestTimeout
-        self.tls = ArchebasePublicEndpoints.deviceInitTLS
+        self.tls = nil
     }
 
     package init(
@@ -151,6 +41,10 @@ public struct DeviceInitClientConfig: Sendable {
         tls: TLSMode
     ) {
         self.configURL = configURL
+        self.endpointsURL = configURL
+            .deletingLastPathComponent()
+            .appendingPathComponent(ArchebasePublicEndpoints.endpointsFileName)
+            .standardizedFileURL
         self.requestTimeout = requestTimeout
         self.tls = tls
     }
@@ -365,7 +259,7 @@ public struct DataGatewayClientConfig: Sendable {
     package var tls: TLSMode { self.authTLS }
     public var observability: DataGatewayClientObservability
 
-    /// Creates a client configuration that uses the resource-defined public endpoints.
+    /// Creates a client configuration that uses the runtime public endpoints file.
     public init(
         credentialBase64: String,
         authRefreshBefore: Duration,
@@ -373,18 +267,20 @@ public struct DataGatewayClientConfig: Sendable {
         persistRootURL: URL,
         retryPolicy: RetryPolicySet,
         execution: UploadExecutionPolicy,
+        endpointsURL: URL,
         observability: DataGatewayClientObservability = .disabled
-    ) {
-        self.authEndpoint = ArchebasePublicEndpoints.auth
-        self.gatewayEndpoint = ArchebasePublicEndpoints.gateway
+    ) throws {
+        let endpoints = try ArchebasePublicEndpoints.load(endpointsURL: endpointsURL)
+        self.authEndpoint = endpoints.auth
+        self.gatewayEndpoint = endpoints.gateway
         self.credentialBase64 = credentialBase64
         self.authRefreshBefore = authRefreshBefore
         self.requestTimeout = requestTimeout
         self.persistRootURL = persistRootURL
         self.retryPolicy = retryPolicy
         self.execution = execution
-        self.authTLS = ArchebasePublicEndpoints.authTLS
-        self.gatewayTLS = ArchebasePublicEndpoints.gatewayTLS
+        self.authTLS = endpoints.authTLS
+        self.gatewayTLS = endpoints.gatewayTLS
         self.observability = observability
     }
 
@@ -413,19 +309,21 @@ public struct DataGatewayClientConfig: Sendable {
         self.observability = observability
     }
 
-    /// Recommended defaults for resource-defined public endpoints.
+    /// Recommended defaults for runtime public endpoints.
     public static func recommended(
         credentialBase64: String,
         persistRootURL: URL,
+        endpointsURL: URL,
         observability: DataGatewayClientObservability = .disabled
-    ) -> DataGatewayClientConfig {
-        DataGatewayClientConfig(
+    ) throws -> DataGatewayClientConfig {
+        try DataGatewayClientConfig(
             credentialBase64: credentialBase64,
             authRefreshBefore: .seconds(60),
             requestTimeout: .seconds(10),
             persistRootURL: persistRootURL,
             retryPolicy: .recommended,
             execution: .recommended,
+            endpointsURL: endpointsURL,
             observability: observability
         )
     }
@@ -532,11 +430,14 @@ public actor ArchebaseDeviceInitializer {
     private let sdkVersion: String
     private let platform: String
 
-    /// Creates an initializer that targets the resource-defined public initialization endpoint.
+    /// Creates an initializer that targets the runtime public initialization endpoint.
     public init(config: DeviceInitClientConfig) throws {
+        let endpoints = try ArchebasePublicEndpoints.load(endpointsURL: config.endpointsURL)
+        var resolvedConfig = config
+        resolvedConfig.tls = config.tls ?? endpoints.deviceInitTLS
         try self.init(
-            config: config,
-            initEndpoint: ArchebasePublicEndpoints.deviceInit,
+            config: resolvedConfig,
+            initEndpoint: endpoints.deviceInit,
             sdkVersion: DataGatewayClientModule.version,
             platform: "ios"
         )
@@ -548,11 +449,12 @@ public actor ArchebaseDeviceInitializer {
         sdkVersion: String = DataGatewayClientModule.version,
         platform: String = "ios"
     ) throws {
-        let security: ControlPlaneTransportSecurity = switch config.tls {
+        let tls = config.tls ?? Self.tlsMode(for: initEndpoint)
+        let security: ControlPlaneTransportSecurity = switch tls {
         case .plaintext: .plaintext
         case .tls: .tls
         }
-        try DataGatewayClientConfig.validate(endpoint: initEndpoint, tls: config.tls, fieldName: "initEndpoint")
+        try DataGatewayClientConfig.validate(endpoint: initEndpoint, tls: tls, fieldName: "initEndpoint")
 
         let factory = ControlPlaneClientFactory(
             configuration: ControlPlaneTransportConfiguration(
@@ -569,6 +471,10 @@ public actor ArchebaseDeviceInitializer {
             sdkVersion: sdkVersion,
             platform: platform
         )
+    }
+
+    private static func tlsMode(for endpoint: URL) -> TLSMode {
+        endpoint.scheme?.lowercased() == "https" ? .tls : .plaintext
     }
 
     package init(
@@ -1693,6 +1599,10 @@ public actor DataGatewayClient {
     private let runtimeResources: DataGatewayClientRuntimeResources?
     private let configTags: [String: String]
 
+    public static func initialize(endpointsJSON: String, endpointsURL: URL) throws {
+        try ArchebasePublicEndpoints.initialize(endpointsJSON: endpointsJSON, endpointsURL: endpointsURL)
+    }
+
     /// Creates a fully wired client from the public configuration.
     public init(config: DataGatewayClientConfig) throws {
         try self.init(config: config, configTags: [:])
@@ -1795,13 +1705,15 @@ public actor DataGatewayClient {
     public static func fromArchebaseConfig(
         configURL: URL,
         persistRootURL: URL,
+        endpointsURL: URL,
         observability: DataGatewayClientObservability = .disabled
     ) async throws -> DataGatewayClient {
         let store = ArchebaseConfigStore(configURL: configURL)
         let archebaseConfig = try await store.load()
-        let config = DataGatewayClientConfig.recommended(
+        let config = try DataGatewayClientConfig.recommended(
             credentialBase64: archebaseConfig.apiKey,
             persistRootURL: persistRootURL,
+            endpointsURL: endpointsURL,
             observability: observability
         )
         return try DataGatewayClient(config: config, configTags: archebaseConfig.tags)

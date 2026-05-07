@@ -752,7 +752,10 @@ struct LocalStackHarnessTests {
     let configURL = clientConfig.persistRootURL.appendingPathComponent("archebase-config.json")
     let initializer: ArchebaseDeviceInitializer
     if publicDNSIntegrationEnabled {
-        initializer = try ArchebaseDeviceInitializer(config: DeviceInitClientConfig(configURL: configURL))
+        let endpointsURL = clientConfig.persistRootURL.appendingPathComponent(ArchebasePublicEndpoints.endpointsFileName)
+        initializer = try ArchebaseDeviceInitializer(
+            config: DeviceInitClientConfig(configURL: configURL, endpointsURL: endpointsURL)
+        )
     } else {
         let initEndpoint = try requiredURLFromEnvironment("DGW_REAL_INIT_ENDPOINT")
         let initTLS: TLSMode = initEndpoint.scheme?.lowercased() == "https" ? .tls : .plaintext
@@ -809,9 +812,17 @@ private struct RealGatewayHarness {
 
 private func uniqueRealClientConfig(from config: DataGatewayClientConfig, label: String) throws -> DataGatewayClientConfig {
     var copy = config
+    let originalPersistRoot = config.persistRootURL
     copy.persistRootURL = config.persistRootURL
         .appendingPathComponent("aliyun-real-\(label)-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: copy.persistRootURL, withIntermediateDirectories: true)
+    let originalEndpointsURL = originalPersistRoot.appendingPathComponent(ArchebasePublicEndpoints.endpointsFileName)
+    if FileManager.default.fileExists(atPath: originalEndpointsURL.path()) {
+        try FileManager.default.copyItem(
+            at: originalEndpointsURL,
+            to: copy.persistRootURL.appendingPathComponent(ArchebasePublicEndpoints.endpointsFileName)
+        )
+    }
     return copy
 }
 

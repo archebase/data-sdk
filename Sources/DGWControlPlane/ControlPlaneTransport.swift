@@ -409,6 +409,8 @@ public enum DataGatewayClientError: Error, Sendable, Equatable {
     case invalidConfiguration(String)
     case alreadyInitialized(configURL: URL)
     case notInitialized(configURL: URL)
+    case endpointsAlreadyInitialized(endpointsURL: URL)
+    case endpointsNotInitialized(endpointsURL: URL)
     case invalidLocalFile(String)
     case zeroByteFile
     case ossFailed(httpStatus: Int?, ossCode: String?, message: String)

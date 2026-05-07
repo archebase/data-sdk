@@ -10,24 +10,50 @@ import Testing
 @Test func fromArchebaseConfigRejectsMissingConfig() async throws {
     let root = try temporaryRoot()
     let configURL = root.appendingPathComponent("archebase-config.json")
+    let endpointsURL = root.appendingPathComponent(ArchebasePublicEndpoints.endpointsFileName)
 
     let error = await #expect(throws: DataGatewayClientError.self) {
         _ = try await DataGatewayClient.fromArchebaseConfig(
             configURL: configURL,
-            persistRootURL: root
+            persistRootURL: root,
+            endpointsURL: endpointsURL
         )
     }
 
     #expect(error == .notInitialized(configURL: configURL.standardizedFileURL))
 }
 
-@Test func fromArchebaseConfigBuildsPublicEndpointClient() async throws {
+@Test func fromArchebaseConfigThrowsMissingEndpointsAfterConfigExists() async throws {
     let root = try temporaryRoot()
     let configURL = root.appendingPathComponent("archebase-config.json")
+    let endpointsURL = root.appendingPathComponent(ArchebasePublicEndpoints.endpointsFileName)
     let config = try ArchebaseConfig(apiKey: "credential-base64", tags: ["device": "robot"])
     try await ArchebaseConfigStore(configURL: configURL).initialize(config)
 
-    _ = try await DataGatewayClient.fromArchebaseConfig(configURL: configURL, persistRootURL: root)
+    let error = await #expect(throws: DataGatewayClientError.self) {
+        _ = try await DataGatewayClient.fromArchebaseConfig(
+            configURL: configURL,
+            persistRootURL: root,
+            endpointsURL: endpointsURL
+        )
+    }
+
+    #expect(error == .endpointsNotInitialized(endpointsURL: endpointsURL.standardizedFileURL))
+}
+
+@Test func fromArchebaseConfigBuildsPublicEndpointClient() async throws {
+    let root = try temporaryRoot()
+    let configURL = root.appendingPathComponent("archebase-config.json")
+    let endpointsURL = root.appendingPathComponent(ArchebasePublicEndpoints.endpointsFileName)
+    let config = try ArchebaseConfig(apiKey: "credential-base64", tags: ["device": "robot"])
+    try await ArchebaseConfigStore(configURL: configURL).initialize(config)
+    try DataGatewayClient.initialize(endpointsJSON: configClientEndpointsJSON(), endpointsURL: endpointsURL)
+
+    _ = try await DataGatewayClient.fromArchebaseConfig(
+        configURL: configURL,
+        persistRootURL: root,
+        endpointsURL: endpointsURL
+    )
 }
 
 @Test func rawTagsMergerMergesConfigAndUploadTags() throws {
@@ -127,6 +153,16 @@ private func temporaryRoot() throws -> URL {
         .appendingPathComponent(UUID().uuidString, isDirectory: true)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     return root
+}
+
+private func configClientEndpointsJSON() -> String {
+    """
+    {
+      "auth": { "scheme": "http", "host": "auth.example.com", "port": 50051 },
+      "gateway": { "scheme": "http", "host": "gateway.example.com", "port": 50053 },
+      "deviceInit": { "scheme": "https", "host": "init.example.com", "port": 443 }
+    }
+    """
 }
 
 private func makeTestExecutionPolicy() -> UploadExecutionPolicy {

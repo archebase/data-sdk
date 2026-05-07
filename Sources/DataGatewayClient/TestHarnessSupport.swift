@@ -222,9 +222,15 @@ package struct AliyunOSSTestEnvironment: Sendable {
         )
 
         if self.environment["DGW_PUBLIC_DNS_INTEGRATION"] == "1" {
-            return DataGatewayClientConfig.recommended(
+            let endpointsURL = persistRoot.appendingPathComponent(ArchebasePublicEndpoints.endpointsFileName)
+            try DataGatewayClient.initialize(
+                endpointsJSON: try self.publicEndpointsJSON(),
+                endpointsURL: endpointsURL
+            )
+            return try DataGatewayClientConfig.recommended(
                 credentialBase64: credentialBase64,
-                persistRootURL: persistRoot
+                persistRootURL: persistRoot,
+                endpointsURL: endpointsURL
             )
         }
 
@@ -267,6 +273,53 @@ package struct AliyunOSSTestEnvironment: Sendable {
             return url
         }
         throw LocalStackHarnessError.invalidEndpoint(key)
+    }
+
+    private func optionalURL(for key: String) throws -> URL? {
+        guard let value = self.environment[key]?.trimmedNonEmpty else {
+            return nil
+        }
+        guard let url = Self.normalizedURL(from: value) else {
+            throw LocalStackHarnessError.invalidEndpoint(key)
+        }
+        return url
+    }
+
+    private func publicEndpointsJSON() throws -> String {
+        if let json = self.environment["DGW_PUBLIC_ENDPOINTS_JSON"]?.trimmedNonEmpty {
+            return json
+        }
+        if let path = self.environment["DGW_PUBLIC_ENDPOINTS_FILE"]?.trimmedNonEmpty {
+            return try String(contentsOf: URL(fileURLWithPath: path), encoding: .utf8)
+        }
+
+        let authEndpoint = try self.requiredURL(for: "DGW_REAL_AUTH_ENDPOINT")
+        let gatewayEndpoint = try self.requiredURL(for: "DGW_REAL_GATEWAY_ENDPOINT")
+        let deviceInitEndpoint = try self.optionalURL(for: "DGW_REAL_INIT_ENDPOINT")
+            ?? self.optionalURL(for: "DGW_REAL_DEVICE_INIT_ENDPOINT")
+            ?? gatewayEndpoint
+        return Self.endpointsJSON(
+            authEndpoint: authEndpoint,
+            gatewayEndpoint: gatewayEndpoint,
+            deviceInitEndpoint: deviceInitEndpoint
+        )
+    }
+
+    private static func endpointsJSON(authEndpoint: URL, gatewayEndpoint: URL, deviceInitEndpoint: URL) -> String {
+        """
+        {
+          "auth": \(Self.endpointJSON(authEndpoint)),
+          "gateway": \(Self.endpointJSON(gatewayEndpoint)),
+          "deviceInit": \(Self.endpointJSON(deviceInitEndpoint))
+        }
+        """
+    }
+
+    private static func endpointJSON(_ endpoint: URL) -> String {
+        let scheme = endpoint.scheme?.lowercased() ?? "https"
+        let host = endpoint.host(percentEncoded: false) ?? endpoint.host ?? ""
+        let port = endpoint.port ?? (scheme == "https" ? 443 : 80)
+        return #"{"scheme":"\#(scheme)","host":"\#(host)","port":\#(port)}"#
     }
 
     private static func normalizedURL(from value: String) -> URL? {
