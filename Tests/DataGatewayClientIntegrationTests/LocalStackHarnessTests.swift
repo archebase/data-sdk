@@ -141,6 +141,8 @@ struct LocalStackHarnessTests {
     #expect(script.contains("DGW_LOCAL_BOOTSTRAP_ADMIN_PASSWORD"))
     #expect(script.contains("DGW_LOCAL_BOOTSTRAP_MAX_TIME_SECONDS"))
     #expect(script.contains("DGW_LOCAL_BOOTSTRAP_CONNECT_TIMEOUT_SECONDS"))
+    #expect(script.contains(#"BOOTSTRAP_API_KEY_SUFFIX="${BOOTSTRAP_API_KEY_SUFFIX:0:26}""#))
+    #expect(script.contains("swift-key-${BOOTSTRAP_API_KEY_SUFFIX}"))
     #expect(script.contains("DGW_LOCAL_CREDENTIAL_BASE64"))
     #expect(script.contains("DGW_LOCAL_DEVICE_ID"))
     #expect(script.contains("DGW_LOCAL_UNBOUND_DEVICE_ID"))
