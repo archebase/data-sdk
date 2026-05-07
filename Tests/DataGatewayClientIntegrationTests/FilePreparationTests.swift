@@ -96,76 +96,242 @@ func makePersistencePolicy(copyExternalFileIntoManagedStaging: Bool) -> LocalPer
     #expect(DataGatewayClientModule.name == "DataGatewayClient")
 }
 
-@Test func publicEndpointsLoadRequiredResourceContract() {
-    for endpoint in [ArchebasePublicEndpoints.auth, ArchebasePublicEndpoints.gateway, ArchebasePublicEndpoints.deviceInit] {
-        #expect(endpoint.scheme == "http" || endpoint.scheme == "https")
-        #expect(endpoint.host?.isEmpty == false)
-        #expect(endpoint.port != nil)
-    }
-}
+@Test func endpointDecodeAcceptsCurrentContract() throws {
+    let endpoints = try ArchebasePublicEndpoints.decodeEndpoints(validEndpointsJSON().data(using: .utf8)!)
 
-@Test func publicEndpointResourceParsesHttpAndHttpsValues() throws {
-    let payload = Data("""
-    {
-      "auth": { "schema": "http", "host": "nlb.example.com", "port": 50051 },
-      "gateway": { "scheme": "http", "host": "nlb.example.com", "port": 50053 },
-      "deviceInit": { "scheme": "https", "host": "init.example.com", "port": 443 }
-    }
-    """.utf8)
-
-    let endpoints = try ArchebasePublicEndpoints.decodeResource(payload)
-
-    #expect(endpoints.auth == URL(string: "http://nlb.example.com:50051")!)
-    #expect(endpoints.gateway == URL(string: "http://nlb.example.com:50053")!)
+    #expect(endpoints.auth == URL(string: "http://auth.example.com:50051")!)
+    #expect(endpoints.gateway == URL(string: "http://gateway.example.com:50053")!)
     #expect(endpoints.deviceInit == URL(string: "https://init.example.com:443")!)
     #expect(endpoints.authTLS == .plaintext)
     #expect(endpoints.gatewayTLS == .plaintext)
     #expect(endpoints.deviceInitTLS == .tls)
 }
 
-@Test func publicEndpointResourceRejectsInvalidSchemeAndPort() {
+@Test func endpointDecodeRejectsLegacySchemaField() {
+    let legacySchema = Data("""
+    {
+      "auth": { "schema": "http", "host": "auth.example.com", "port": 50051 },
+      "gateway": { "scheme": "http", "host": "gateway.example.com", "port": 50053 },
+      "deviceInit": { "scheme": "https", "host": "init.example.com", "port": 443 }
+    }
+    """.utf8)
+
+    #expect(throws: DataGatewayClientError.self) {
+        try ArchebasePublicEndpoints.decodeEndpoints(legacySchema)
+    }
+}
+
+@Test func endpointDecodeRejectsInvalidScheme() {
     let invalidScheme = Data("""
     {
       "auth": { "scheme": "grpc", "host": "auth.example.com", "port": 50051 },
       "gateway": { "scheme": "http", "host": "gateway.example.com", "port": 50053 },
-      "deviceInit": { "scheme": "http", "host": "init.example.com", "port": 50057 }
+      "deviceInit": { "scheme": "https", "host": "init.example.com", "port": 443 }
     }
     """.utf8)
+
+    #expect(throws: DataGatewayClientError.self) {
+        try ArchebasePublicEndpoints.decodeEndpoints(invalidScheme)
+    }
+}
+
+@Test func endpointDecodeRejectsEmptyHost() {
+    let emptyHost = Data("""
+    {
+      "auth": { "scheme": "http", "host": "   ", "port": 50051 },
+      "gateway": { "scheme": "http", "host": "gateway.example.com", "port": 50053 },
+      "deviceInit": { "scheme": "https", "host": "init.example.com", "port": 443 }
+    }
+    """.utf8)
+
+    #expect(throws: DataGatewayClientError.self) {
+        try ArchebasePublicEndpoints.decodeEndpoints(emptyHost)
+    }
+}
+
+@Test func endpointDecodeRejectsPortBelowRange() {
     let invalidPort = Data("""
     {
       "auth": { "scheme": "http", "host": "auth.example.com", "port": 0 },
       "gateway": { "scheme": "http", "host": "gateway.example.com", "port": 50053 },
-      "deviceInit": { "scheme": "http", "host": "init.example.com", "port": 50057 }
+      "deviceInit": { "scheme": "https", "host": "init.example.com", "port": 443 }
     }
     """.utf8)
 
     #expect(throws: DataGatewayClientError.self) {
-        try ArchebasePublicEndpoints.decodeResource(invalidScheme)
-    }
-    #expect(throws: DataGatewayClientError.self) {
-        try ArchebasePublicEndpoints.decodeResource(invalidPort)
+        try ArchebasePublicEndpoints.decodeEndpoints(invalidPort)
     }
 }
 
-@Test func publicClientConfigUsesResourceEndpointsAndDerivedTls() throws {
-    let root = URL(fileURLWithPath: "/tmp/archebase-public-config", isDirectory: true)
-    let config = DataGatewayClientConfig.recommended(credentialBase64: "credential-base64", persistRootURL: root)
+@Test func endpointDecodeRejectsPortAboveRange() {
+    let invalidPort = Data("""
+    {
+      "auth": { "scheme": "http", "host": "auth.example.com", "port": 65536 },
+      "gateway": { "scheme": "http", "host": "gateway.example.com", "port": 50053 },
+      "deviceInit": { "scheme": "https", "host": "init.example.com", "port": 443 }
+    }
+    """.utf8)
 
-    #expect(config.authEndpoint == ArchebasePublicEndpoints.auth)
-    #expect(config.gatewayEndpoint == ArchebasePublicEndpoints.gateway)
-    #expect(config.authTLS == ArchebasePublicEndpoints.authTLS)
-    #expect(config.gatewayTLS == ArchebasePublicEndpoints.gatewayTLS)
+    #expect(throws: DataGatewayClientError.self) {
+        try ArchebasePublicEndpoints.decodeEndpoints(invalidPort)
+    }
+}
+
+@Test func endpointLoadRejectsMissingFile() throws {
+    let root = try filePreparationTemporaryRoot()
+    let endpointsURL = root.appendingPathComponent(ArchebasePublicEndpoints.endpointsFileName)
+
+    let error = #expect(throws: DataGatewayClientError.self) {
+        try ArchebasePublicEndpoints.load(endpointsURL: endpointsURL)
+    }
+
+    #expect(error == .endpointsNotInitialized(endpointsURL: endpointsURL.standardizedFileURL))
+}
+
+@Test func endpointInitializeWritesValidatedJSON() throws {
+    let root = try filePreparationTemporaryRoot()
+    let endpointsURL = root.appendingPathComponent(ArchebasePublicEndpoints.endpointsFileName)
+
+    try DataGatewayClient.initialize(endpointsJSON: validEndpointsJSON(), endpointsURL: endpointsURL)
+
+    #expect(FileManager.default.fileExists(atPath: endpointsURL.path()))
+    let endpoints = try ArchebasePublicEndpoints.load(endpointsURL: endpointsURL)
+    #expect(endpoints.gateway == URL(string: "http://gateway.example.com:50053")!)
+}
+
+@Test func endpointInitializeRejectsInvalidJSONWithoutCreatingFile() throws {
+    let root = try filePreparationTemporaryRoot()
+    let endpointsURL = root.appendingPathComponent(ArchebasePublicEndpoints.endpointsFileName)
+
+    #expect(throws: DataGatewayClientError.self) {
+        try DataGatewayClient.initialize(endpointsJSON: "{", endpointsURL: endpointsURL)
+    }
+
+    #expect(!FileManager.default.fileExists(atPath: endpointsURL.path()))
+}
+
+@Test func endpointInitializeIsIdempotentForEquivalentEndpoints() throws {
+    let root = try filePreparationTemporaryRoot()
+    let endpointsURL = root.appendingPathComponent(ArchebasePublicEndpoints.endpointsFileName)
+
+    try DataGatewayClient.initialize(endpointsJSON: validEndpointsJSON(), endpointsURL: endpointsURL)
+    try DataGatewayClient.initialize(endpointsJSON: validEndpointsJSON(), endpointsURL: endpointsURL)
+}
+
+@Test func endpointInitializeRejectsDifferentExistingEndpoints() throws {
+    let root = try filePreparationTemporaryRoot()
+    let endpointsURL = root.appendingPathComponent(ArchebasePublicEndpoints.endpointsFileName)
+
+    try DataGatewayClient.initialize(endpointsJSON: validEndpointsJSON(), endpointsURL: endpointsURL)
+    let error = #expect(throws: DataGatewayClientError.self) {
+        try DataGatewayClient.initialize(
+            endpointsJSON: validEndpointsJSON(authHost: "other-auth.example.com"),
+            endpointsURL: endpointsURL
+        )
+    }
+
+    #expect(error == .endpointsAlreadyInitialized(endpointsURL: endpointsURL.standardizedFileURL))
+}
+
+@Test func endpointInitializeRejectsCorruptExistingFile() throws {
+    let root = try filePreparationTemporaryRoot()
+    let endpointsURL = root.appendingPathComponent(ArchebasePublicEndpoints.endpointsFileName)
+    try Data("not-json".utf8).write(to: endpointsURL)
+
+    #expect(throws: DataGatewayClientError.self) {
+        try DataGatewayClient.initialize(endpointsJSON: validEndpointsJSON(), endpointsURL: endpointsURL)
+    }
+
+    #expect(String(data: try Data(contentsOf: endpointsURL), encoding: .utf8) == "not-json")
+}
+
+@Test func publicClientConfigLoadsPersistedEndpoints() throws {
+    let root = try filePreparationTemporaryRoot()
+    let endpointsURL = root.appendingPathComponent(ArchebasePublicEndpoints.endpointsFileName)
+    try DataGatewayClient.initialize(endpointsJSON: validEndpointsJSON(), endpointsURL: endpointsURL)
+
+    let config = try DataGatewayClientConfig.recommended(
+        credentialBase64: "credential-base64",
+        persistRootURL: root,
+        endpointsURL: endpointsURL
+    )
+
+    #expect(config.authEndpoint == URL(string: "http://auth.example.com:50051")!)
+    #expect(config.gatewayEndpoint == URL(string: "http://gateway.example.com:50053")!)
+    #expect(config.authTLS == .plaintext)
+    #expect(config.gatewayTLS == .plaintext)
     #expect(config.credentialBase64 == "credential-base64")
     #expect(config.persistRootURL == root)
     #expect(throws: Never.self) { try config.validate() }
 }
 
-@Test func publicDeviceInitConfigUsesTlsByDefault() throws {
-    let configURL = URL(fileURLWithPath: "/tmp/archebase-config.json")
-    let config = DeviceInitClientConfig(configURL: configURL)
+@Test func publicClientConfigThrowsWhenEndpointsMissing() throws {
+    let root = try filePreparationTemporaryRoot()
+    let endpointsURL = root.appendingPathComponent(ArchebasePublicEndpoints.endpointsFileName)
+
+    let error = #expect(throws: DataGatewayClientError.self) {
+        _ = try DataGatewayClientConfig.recommended(
+            credentialBase64: "credential-base64",
+            persistRootURL: root,
+            endpointsURL: endpointsURL
+        )
+    }
+
+    #expect(error == .endpointsNotInitialized(endpointsURL: endpointsURL.standardizedFileURL))
+}
+
+@Test func publicDeviceInitConfigStoresEndpointsURLWithoutLoadingIt() throws {
+    let root = try filePreparationTemporaryRoot()
+    let configURL = root.appendingPathComponent("archebase-config.json")
+    let endpointsURL = root.appendingPathComponent(ArchebasePublicEndpoints.endpointsFileName)
+    let config = DeviceInitClientConfig(configURL: configURL, endpointsURL: endpointsURL)
 
     #expect(config.configURL == configURL)
-    #expect(config.tls == ArchebasePublicEndpoints.deviceInitTLS)
+    #expect(config.endpointsURL == endpointsURL)
+    #expect(config.tls == nil)
+}
+
+@Test func publicDeviceInitializerLoadsPersistedDeviceInitEndpoint() throws {
+    let root = try filePreparationTemporaryRoot()
+    let configURL = root.appendingPathComponent("archebase-config.json")
+    let endpointsURL = root.appendingPathComponent(ArchebasePublicEndpoints.endpointsFileName)
+    try DataGatewayClient.initialize(endpointsJSON: validEndpointsJSON(), endpointsURL: endpointsURL)
+
+    _ = try ArchebaseDeviceInitializer(
+        config: DeviceInitClientConfig(configURL: configURL, endpointsURL: endpointsURL)
+    )
+}
+
+@Test func publicDeviceInitializerThrowsWhenEndpointsMissing() throws {
+    let root = try filePreparationTemporaryRoot()
+    let configURL = root.appendingPathComponent("archebase-config.json")
+    let endpointsURL = root.appendingPathComponent(ArchebasePublicEndpoints.endpointsFileName)
+
+    let error = #expect(throws: DataGatewayClientError.self) {
+        _ = try ArchebaseDeviceInitializer(
+            config: DeviceInitClientConfig(configURL: configURL, endpointsURL: endpointsURL)
+        )
+    }
+
+    #expect(error == .endpointsNotInitialized(endpointsURL: endpointsURL.standardizedFileURL))
+}
+
+private func filePreparationTemporaryRoot() throws -> URL {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("archebase-file-preparation-tests", isDirectory: true)
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    return root
+}
+
+private func validEndpointsJSON(authHost: String = "auth.example.com") -> String {
+    """
+    {
+      "auth": { "scheme": "http", "host": "\(authHost)", "port": 50051 },
+      "gateway": { "scheme": "http", "host": "gateway.example.com", "port": 50053 },
+      "deviceInit": { "scheme": "https", "host": "init.example.com", "port": 443 }
+    }
+    """
 }
 
 private extension Dictionary {

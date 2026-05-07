@@ -1,5 +1,0 @@
-{
-  "auth": { "scheme": "http", "host": "nlb-isnnehtfmxqv70lvm9.cn-shanghai.nlb.aliyuncsslb.com", "port": 50051 },
-  "gateway": { "scheme": "http", "host": "nlb-isnnehtfmxqv70lvm9.cn-shanghai.nlb.aliyuncsslb.com", "port": 50053 },
-  "deviceInit": { "scheme": "http", "host": "nlb-isnnehtfmxqv70lvm9.cn-shanghai.nlb.aliyuncsslb.com", "port": 50057 }
-}

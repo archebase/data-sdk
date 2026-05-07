@@ -58,13 +58,11 @@ import Testing
         execution: .recommended,
         tls: .tls
     )
-    let emptyCredential = DataGatewayClientConfig(
+    let emptyCredential = DataGatewayClientConfig.testRecommended(
+        authEndpoint: URL(string: "http://127.0.0.1:15055")!,
+        gatewayEndpoint: URL(string: "http://127.0.0.1:15053")!,
         credentialBase64: "   ",
-        authRefreshBefore: .seconds(60),
-        requestTimeout: .seconds(10),
-        persistRootURL: persistRoot,
-        retryPolicy: .recommended,
-        execution: .recommended
+        persistRootURL: persistRoot
     )
 
     #expect(throws: DataGatewayClientError.self) { try plaintextMismatch.validate() }
