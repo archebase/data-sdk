@@ -140,8 +140,8 @@ import Testing
             )
         )
 
-        #expect(!FileManager.default.fileExists(atPath: terminalURL(root: sandbox.root, logicalUploadID: "logical-7").path()))
-        #expect(!FileManager.default.fileExists(atPath: completedURL(root: sandbox.root, logicalUploadID: "logical-8").path()))
+        #expect(!FileManager.default.fileExists(atPath: terminalURL(root: sandbox.root, logicalUploadID: "logical-7").path))
+        #expect(!FileManager.default.fileExists(atPath: completedURL(root: sandbox.root, logicalUploadID: "logical-8").path))
     }
 
     @Test func keepFlagsPreventRemovalBeforeTTLButDisableRetentionWhenFalse() async throws {
@@ -166,8 +166,8 @@ import Testing
             )
         )
 
-        #expect(FileManager.default.fileExists(atPath: terminalURL(root: sandbox.root, logicalUploadID: "logical-9").path()))
-        #expect(!FileManager.default.fileExists(atPath: completedURL(root: sandbox.root, logicalUploadID: "logical-10").path()))
+        #expect(FileManager.default.fileExists(atPath: terminalURL(root: sandbox.root, logicalUploadID: "logical-9").path))
+        #expect(!FileManager.default.fileExists(atPath: completedURL(root: sandbox.root, logicalUploadID: "logical-10").path))
     }
 }
 

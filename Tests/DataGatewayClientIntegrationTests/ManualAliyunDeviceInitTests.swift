@@ -21,7 +21,7 @@ struct ManualAliyunDeviceInitTests {
         let configPath = try requiredEnvironment("DGW_MANUAL_CONFIG_URL", environment: environment)
         let configURL = URL(fileURLWithPath: configPath)
 
-        if FileManager.default.fileExists(atPath: configURL.path()) {
+        if FileManager.default.fileExists(atPath: configURL.path) {
             try FileManager.default.removeItem(at: configURL)
         }
 
@@ -35,7 +35,7 @@ struct ManualAliyunDeviceInitTests {
 
         let config = try await initializer.initDevice(deviceID: deviceID)
         #expect(!config.apiKey.isEmpty)
-        print("MANUAL_DEVICE_INIT_CONFIG_URL=\(configURL.standardizedFileURL.path())")
+        print("MANUAL_DEVICE_INIT_CONFIG_URL=\(configURL.standardizedFileURL.path)")
         print("MANUAL_DEVICE_INIT_TAG_KEYS=\(config.tags.keys.sorted().joined(separator: ","))")
     }
 }

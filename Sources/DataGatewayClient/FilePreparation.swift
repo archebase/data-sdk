@@ -571,11 +571,11 @@ package struct LocalFileSystem: FileSystemProviding {
     package init() {}
 
     package func fileExists(at url: URL) -> Bool {
-        FileManager.default.fileExists(atPath: url.path())
+        FileManager.default.fileExists(atPath: url.path)
     }
 
     package func attributes(at url: URL) throws -> [FileAttributeKey: Any] {
-        try FileManager.default.attributesOfItem(atPath: url.path())
+        try FileManager.default.attributesOfItem(atPath: url.path)
     }
 
     package func read(prefixFrom url: URL, maxLength: Int) throws -> Data {
@@ -593,7 +593,7 @@ package struct LocalFileSystem: FileSystemProviding {
     }
 
     package func copyItem(at sourceURL: URL, to destinationURL: URL) throws {
-        if FileManager.default.fileExists(atPath: destinationURL.path()) {
+        if FileManager.default.fileExists(atPath: destinationURL.path) {
             try FileManager.default.removeItem(at: destinationURL)
         }
         try FileManager.default.copyItem(at: sourceURL, to: destinationURL)

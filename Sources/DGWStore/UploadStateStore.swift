@@ -220,7 +220,7 @@ public actor UploadStateStore {
         for directory in self.stateDirectories() {
             try self.fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         }
-        if !self.fileManager.fileExists(atPath: self.indexFileURL().path()) {
+        if !self.fileManager.fileExists(atPath: self.indexFileURL().path) {
             try self.atomicWrite(LocalFileIndex.empty, to: self.indexFileURL())
         }
     }
@@ -234,7 +234,7 @@ public actor UploadStateStore {
         namespace: SnapshotNamespace
     ) throws -> PersistedUploadState? {
         let url = self.snapshotURL(logicalUploadID: logicalUploadID, namespace: namespace)
-        guard self.fileManager.fileExists(atPath: url.path()) else {
+        guard self.fileManager.fileExists(atPath: url.path) else {
             return nil
         }
         return try self.jsonCodec.decode(PersistedUploadState.self, from: Data(contentsOf: url))
@@ -254,7 +254,7 @@ public actor UploadStateStore {
 
     private func readIndex() throws -> LocalFileIndex {
         let url = self.indexFileURL()
-        guard self.fileManager.fileExists(atPath: url.path()) else {
+        guard self.fileManager.fileExists(atPath: url.path) else {
             return .empty
         }
         return try self.jsonCodec.decode(LocalFileIndex.self, from: Data(contentsOf: url))
@@ -262,7 +262,7 @@ public actor UploadStateStore {
 
     private func removeSnapshotIfPresent(logicalUploadID: String, in namespace: SnapshotNamespace) throws {
         let url = self.snapshotURL(logicalUploadID: logicalUploadID, namespace: namespace)
-        if self.fileManager.fileExists(atPath: url.path()) {
+        if self.fileManager.fileExists(atPath: url.path) {
             try self.fileManager.removeItem(at: url)
         }
     }
@@ -302,10 +302,23 @@ public actor UploadStateStore {
         #endif
         try data.write(to: temporaryURL, options: writeOptions)
 
-        if self.fileManager.fileExists(atPath: destination.path()) {
+        try self.replaceOrMoveTemporaryItem(temporaryURL, to: destination)
+    }
+
+    private func replaceOrMoveTemporaryItem(_ temporaryURL: URL, to destination: URL) throws {
+        if self.fileManager.fileExists(atPath: destination.path) {
             _ = try self.fileManager.replaceItemAt(destination, withItemAt: temporaryURL)
-        } else {
+            return
+        }
+
+        do {
             try self.fileManager.moveItem(at: temporaryURL, to: destination)
+        } catch {
+            if self.fileManager.fileExists(atPath: destination.path) {
+                _ = try self.fileManager.replaceItemAt(destination, withItemAt: temporaryURL)
+                return
+            }
+            throw error
         }
     }
 
@@ -330,7 +343,7 @@ public actor UploadStateStore {
     }
 
     private func indexKey(for fileURL: URL) -> String {
-        fileURL.standardizedFileURL.path()
+        fileURL.standardizedFileURL.path
     }
 }
 
