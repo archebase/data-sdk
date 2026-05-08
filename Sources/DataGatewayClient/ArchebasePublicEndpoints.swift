@@ -53,7 +53,7 @@ public enum ArchebasePublicEndpoints {
 
     package static func load(endpointsURL: URL) throws -> Resolved {
         let resolvedURL = endpointsURL.standardizedFileURL
-        guard FileManager.default.fileExists(atPath: resolvedURL.path()) else {
+        guard FileManager.default.fileExists(atPath: resolvedURL.path) else {
             throw DataGatewayClientError.endpointsNotInitialized(endpointsURL: resolvedURL)
         }
 
@@ -79,7 +79,7 @@ public enum ArchebasePublicEndpoints {
         let resolvedURL = endpointsURL.standardizedFileURL
         let fileManager = FileManager.default
 
-        if fileManager.fileExists(atPath: resolvedURL.path()) {
+        if fileManager.fileExists(atPath: resolvedURL.path) {
             let existing = try Self.load(endpointsURL: resolvedURL)
             guard existing == expected else {
                 throw DataGatewayClientError.endpointsAlreadyInitialized(endpointsURL: resolvedURL)
@@ -105,8 +105,8 @@ public enum ArchebasePublicEndpoints {
             do {
                 try fileManager.moveItem(at: tempURL, to: endpointsURL)
             } catch {
-                if fileManager.fileExists(atPath: endpointsURL.path()) {
-                    let existing = try Self.load(endpointsURL: endpointsURL)
+                if fileManager.fileExists(atPath: endpointsURL.path) {
+                    let existing = try Self.loadPersistedEndpoints(endpointsURL: endpointsURL)
                     guard existing == expected else {
                         throw DataGatewayClientError.endpointsAlreadyInitialized(endpointsURL: endpointsURL)
                     }
@@ -115,7 +115,7 @@ public enum ArchebasePublicEndpoints {
                 throw error
             }
 
-            let loaded = try Self.load(endpointsURL: endpointsURL)
+            let loaded = try Self.loadPersistedEndpoints(endpointsURL: endpointsURL)
             guard loaded == expected else {
                 throw DataGatewayClientError.persistenceFailed("archebase endpoints verification failed after write")
             }
@@ -126,6 +126,19 @@ public enum ArchebasePublicEndpoints {
             try? fileManager.removeItem(at: tempURL)
             throw DataGatewayClientError.persistenceFailed(
                 "failed to write archebase endpoints: \(error.localizedDescription)"
+            )
+        }
+    }
+
+    private static func loadPersistedEndpoints(endpointsURL: URL) throws -> Resolved {
+        do {
+            let data = try Data(contentsOf: endpointsURL)
+            return try Self.decodeEndpoints(data)
+        } catch let error as DataGatewayClientError {
+            throw error
+        } catch {
+            throw DataGatewayClientError.persistenceFailed(
+                "failed to verify persisted archebase endpoints at \(endpointsURL.path): \(error.localizedDescription)"
             )
         }
     }

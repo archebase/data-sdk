@@ -12,7 +12,7 @@ final class PassthroughSecurityScopedAccessor: SecurityScopedFileAccessing, @unc
     }
 
     func bookmarkData(for fileURL: URL) throws -> Data {
-        Data("bookmark:\(fileURL.path())".utf8)
+        Data("bookmark:\(fileURL.path)".utf8)
     }
 }
 
@@ -194,9 +194,22 @@ func makePersistencePolicy(copyExternalFileIntoManagedStaging: Bool) -> LocalPer
 
     try DataGatewayClient.initialize(endpointsJSON: validEndpointsJSON(), endpointsURL: endpointsURL)
 
-    #expect(FileManager.default.fileExists(atPath: endpointsURL.path()))
+    #expect(FileManager.default.fileExists(atPath: endpointsURL.path))
     let endpoints = try ArchebasePublicEndpoints.load(endpointsURL: endpointsURL)
     #expect(endpoints.gateway == URL(string: "http://gateway.example.com:50053")!)
+}
+
+@Test func endpointInitializeLoadsFromDirectoryWithSpaces() throws {
+    let root = try filePreparationTemporaryRoot()
+        .appendingPathComponent("Application Support", isDirectory: true)
+        .appendingPathComponent("Archebase", isDirectory: true)
+    let endpointsURL = root.appendingPathComponent(ArchebasePublicEndpoints.endpointsFileName)
+
+    try DataGatewayClient.initialize(endpointsJSON: validEndpointsJSON(), endpointsURL: endpointsURL)
+
+    #expect(FileManager.default.fileExists(atPath: endpointsURL.path))
+    let endpoints = try ArchebasePublicEndpoints.load(endpointsURL: endpointsURL)
+    #expect(endpoints.deviceInit == URL(string: "https://init.example.com:443")!)
 }
 
 @Test func endpointInitializeRejectsInvalidJSONWithoutCreatingFile() throws {
@@ -207,7 +220,7 @@ func makePersistencePolicy(copyExternalFileIntoManagedStaging: Bool) -> LocalPer
         try DataGatewayClient.initialize(endpointsJSON: "{", endpointsURL: endpointsURL)
     }
 
-    #expect(!FileManager.default.fileExists(atPath: endpointsURL.path()))
+    #expect(!FileManager.default.fileExists(atPath: endpointsURL.path))
 }
 
 @Test func endpointInitializeIsIdempotentForEquivalentEndpoints() throws {
@@ -382,7 +395,7 @@ private extension Dictionary {
 
     #expect(prepared.sourceFileURL == sourceURL)
     #expect(prepared.managedFileURL != sourceURL)
-    #expect(prepared.managedFileURL.path().hasPrefix(stagingRoot.path()))
+    #expect(prepared.managedFileURL.path.hasPrefix(stagingRoot.path))
     #expect(filesystem.copiedItems().count == 1)
     #expect(prepared.fileSize == UInt64(data.count))
     #expect(prepared.fingerprint == LocalFileFingerprint(

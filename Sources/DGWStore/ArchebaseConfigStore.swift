@@ -14,7 +14,7 @@ public actor ArchebaseConfigStore {
 
     /// Returns whether the configuration file currently exists.
     public func exists() -> Bool {
-        self.fileManager.fileExists(atPath: self.configURL.path())
+        self.fileManager.fileExists(atPath: self.configURL.path)
     }
 
     /// Returns the standardized configuration file URL used by this store.
@@ -61,9 +61,16 @@ public actor ArchebaseConfigStore {
         do {
             try Self.writeProtected(data, to: tempURL)
             if replacingExisting {
-                _ = try self.fileManager.replaceItemAt(self.configURL, withItemAt: tempURL)
+                try self.replaceOrMoveTemporaryItem(tempURL, to: self.configURL)
             } else {
-                try self.fileManager.moveItem(at: tempURL, to: self.configURL)
+                do {
+                    try self.fileManager.moveItem(at: tempURL, to: self.configURL)
+                } catch {
+                    if self.fileManager.fileExists(atPath: self.configURL.path) {
+                        throw DataGatewayClientError.alreadyInitialized(configURL: self.configURL)
+                    }
+                    throw error
+                }
             }
             let loaded = try self.load()
             guard loaded == config else {
@@ -75,6 +82,23 @@ public actor ArchebaseConfigStore {
         } catch {
             try? self.fileManager.removeItem(at: tempURL)
             throw DataGatewayClientError.persistenceFailed("failed to write archebase config: \(error.localizedDescription)")
+        }
+    }
+
+    private func replaceOrMoveTemporaryItem(_ temporaryURL: URL, to destination: URL) throws {
+        if self.fileManager.fileExists(atPath: destination.path) {
+            _ = try self.fileManager.replaceItemAt(destination, withItemAt: temporaryURL)
+            return
+        }
+
+        do {
+            try self.fileManager.moveItem(at: temporaryURL, to: destination)
+        } catch {
+            if self.fileManager.fileExists(atPath: destination.path) {
+                _ = try self.fileManager.replaceItemAt(destination, withItemAt: temporaryURL)
+                return
+            }
+            throw error
         }
     }
 

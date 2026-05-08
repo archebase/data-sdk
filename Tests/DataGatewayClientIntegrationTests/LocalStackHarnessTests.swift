@@ -817,7 +817,7 @@ private func uniqueRealClientConfig(from config: DataGatewayClientConfig, label:
         .appendingPathComponent("aliyun-real-\(label)-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: copy.persistRootURL, withIntermediateDirectories: true)
     let originalEndpointsURL = originalPersistRoot.appendingPathComponent(ArchebasePublicEndpoints.endpointsFileName)
-    if FileManager.default.fileExists(atPath: originalEndpointsURL.path()) {
+    if FileManager.default.fileExists(atPath: originalEndpointsURL.path) {
         try FileManager.default.copyItem(
             at: originalEndpointsURL,
             to: copy.persistRootURL.appendingPathComponent(ArchebasePublicEndpoints.endpointsFileName)
