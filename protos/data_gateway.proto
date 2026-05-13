@@ -5,6 +5,9 @@ package archebase.data_gateway.v1;
 import "common.proto";
 
 service DataGatewayService {
+  // Upload RPCs are scoped exclusively by the bearer API-key principal
+  // stamped by the public interceptor. Clients never send site_id or any
+  // other owner identifier on this surface.
   rpc CreateLogicalUpload(CreateLogicalUploadRequest)
       returns (CreateLogicalUploadResponse);
   rpc GetUploadRecovery(GetUploadRecoveryRequest)
@@ -66,7 +69,7 @@ message InitDeviceRequest {
 
 // Response persisted by SDKs into archebase-config.json.
 message InitDeviceResponse {
-  // Base64-encoded credential returned by auth and used for later uploads.
+  // Opaque credential returned by auth and used for later uploads.
   string api_key = 1;
   // Platform-approved device tags replayed on every subsequent upload.
   map<string, string> tags = 2;
@@ -89,6 +92,8 @@ message UploadCredentials {
   string sts_security_token = 6;
   int64 sts_expire_at_unix = 7;
   int64 part_size_bytes = 8;
+  string object_store_backend = 9;
+  string object_store_region = 10;
 }
 
 enum UploadRecoveryAction {
@@ -165,6 +170,10 @@ message CompleteUploadRequest {
   map<string, string> raw_tags = 3;
   int32 completed_part_count = 4;
   string oss_object_etag = 5;
+  // Upload part size issued by data-gateway for this upload session.
+  // New SDKs echo it back so completion validation remains stable if
+  // gateway config changes between credential issuance and completion.
+  int64 part_size_bytes = 6;
 }
 
 message CompleteUploadResponse {}

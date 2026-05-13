@@ -37,18 +37,22 @@ service AdminAuthService {
       returns (UpdateSiteResponse);
   rpc DeleteSite(DeleteSiteRequest)
       returns (DeleteSiteResponse);
-  rpc CreateApiKey(CreateApiKeyRequest)
-      returns (CreateApiKeyResponse);
+  rpc CreateSiteApiKey(CreateSiteApiKeyRequest)
+      returns (CreateSiteApiKeyResponse);
+  rpc CreateOrRotateDeviceApiKey(CreateOrRotateDeviceApiKeyRequest)
+      returns (CreateOrRotateDeviceApiKeyResponse);
   rpc GetApiKey(GetApiKeyRequest)
       returns (GetApiKeyResponse);
   rpc ListApiKeys(ListApiKeysRequest)
       returns (ListApiKeysResponse);
+  rpc UpdateApiKey(UpdateApiKeyRequest)
+      returns (UpdateApiKeyResponse);
   rpc EnableApiKey(EnableApiKeyRequest)
       returns (EnableApiKeyResponse);
   rpc DisableApiKey(DisableApiKeyRequest)
       returns (DisableApiKeyResponse);
-  rpc UpdateApiKey(UpdateApiKeyRequest)
-      returns (UpdateApiKeyResponse);
+  rpc RotateApiKeySecret(RotateApiKeySecretRequest)
+      returns (RotateApiKeySecretResponse);
   rpc DeleteApiKey(DeleteApiKeyRequest)
       returns (DeleteApiKeyResponse);
   rpc CreateOrganization(CreateOrganizationRequest)
@@ -77,15 +81,14 @@ service UserAuthService {
 }
 
 message ExchangeCredentialRequest {
-  string credential_base64 = 1;
+  string credential = 1;
 }
 
 message ExchangeCredentialResponse {
   string access_token = 1;
   int64 expires_at_unix = 2;
   string token_type = 3;
-  string key_id = 4;
-  string key_prefix = 5;
+  ApiKeyPrincipal principal = 4;
 }
 
 message LoginRequest {
@@ -128,37 +131,27 @@ message ExchangeSystemCredentialResponse {
   string user_name = 5;
 }
 
-enum UserRole {
-  USER_ROLE_UNSPECIFIED = 0;
-  USER_ROLE_ADMINISTRATORS = 1;
-  USER_ROLE_NORMAL_USERS = 2;
-}
-
-// Business identity, orthogonal to UserRole (privilege). See
-// docs/design/abac-design.md §3. Service accounts always carry
-// USER_CLASS_UNSPECIFIED; every HUMAN user must have one of the
-// concrete classes per ck_users_admin_class_consistency /
-// ck_users_normal_class_consistency / ck_users_service_account_class
-// in migration 0018.
-enum UserClass {
-  USER_CLASS_UNSPECIFIED = 0;
-  USER_CLASS_SYSTEM_ADMIN = 1;
-  USER_CLASS_ORG_ADMIN = 2;
-  USER_CLASS_ANNOTATOR = 3;
-  USER_CLASS_REVIEWER = 4;
-  USER_CLASS_VIEWER = 5;
-}
-
 message User {
   string organization = 1;
   string user_name = 2;
-  UserRole role = 3;
   google.protobuf.Timestamp last_login_at = 4;
   google.protobuf.Timestamp created_at = 5;
   google.protobuf.Timestamp updated_at = 6;
-  UserClass user_class = 7;
+  // Cedar-era role string. The single source of truth for a
+  // HUMAN user's authorization identity. Empty string for
+  // SERVICE_ACCOUNT principals; a synthetic
+  // `system_service_account` role is injected at PIP time, see
+  // `common/src/abac/subject.rs`. The legacy `role` (UserRole
+  // enum, admin bit) and `user_class` (UserClass enum) fields
+  // were both deleted during the role redesign. The legacy `role`
+  // tag (3) stays reserved so renaming the string field to `role`
+  // here at a fresh tag (7) cannot collide with old clients that
+  // still encode the legacy admin bit.
+  string role = 7;
   int64 organization_id = 8;
   int64 user_id = 9;
+  reserved 3;
+  reserved "user_class";
 }
 
 message Organization {
@@ -176,13 +169,28 @@ message Site {
   google.protobuf.Timestamp updated_at = 5;
 }
 
-message ApiKey {
+enum ApiKeyOwnerKind {
+  API_KEY_OWNER_KIND_UNSPECIFIED = 0;
+  API_KEY_OWNER_KIND_SITE = 1;
+  API_KEY_OWNER_KIND_DEVICE = 2;
+}
+
+message ApiKeyPrincipal {
   int64 site_id = 1;
-  string key_id = 2;
-  string key_prefix = 3;
-  int32 status = 4;
-  google.protobuf.Timestamp expired_at = 5;
-  google.protobuf.Timestamp last_used_at = 6;
+  string api_key_id = 2;
+  string key_name = 3;
+  ApiKeyOwnerKind owner_kind = 4;
+  string device_id = 5;
+  string suite_id = 6;
+}
+
+message ApiKey {
+  string api_key_id = 1;
+  string key_name = 2;
+  int32 status = 3;
+  google.protobuf.Timestamp expired_at = 4;
+  google.protobuf.Timestamp last_used_at = 5;
+  ApiKeyPrincipal principal = 6;
 }
 
 message CreateSiteRequest {
@@ -240,22 +248,32 @@ message DeleteSiteRequest {
 
 message DeleteSiteResponse {}
 
-message CreateApiKeyRequest {
+message CreateSiteApiKeyRequest {
   int64 site_id = 1;
-  string key_id = 2;
-  string key_prefix = 3;
-  int32 status = 4;
-  google.protobuf.Timestamp expired_at = 5;
-  bool rotate_if_exists = 6;
+  string key_name = 2;
+  int32 status = 3;
+  google.protobuf.Timestamp expired_at = 4;
 }
 
-message CreateApiKeyResponse {
-  string credential_base64 = 1;
+message CreateSiteApiKeyResponse {
+  ApiKey api_key = 1;
+  string credential = 2;
+}
+
+message CreateOrRotateDeviceApiKeyRequest {
+  string device_id = 1;
+  string key_name = 2;
+  int32 status = 3;
+  google.protobuf.Timestamp expired_at = 4;
+}
+
+message CreateOrRotateDeviceApiKeyResponse {
+  ApiKey api_key = 1;
+  string credential = 2;
 }
 
 message GetApiKeyRequest {
-  int64 site_id = 1;
-  string key_id = 2;
+  string api_key_id = 1;
 }
 
 message GetApiKeyResponse {
@@ -263,7 +281,10 @@ message GetApiKeyResponse {
 }
 
 message ListApiKeysRequest {
+  // Use 0 to list API keys across all sites.
   int64 site_id = 1;
+  ApiKeyOwnerKind owner_kind = 2;
+  string device_id = 3;
 }
 
 message ListApiKeysResponse {
@@ -271,8 +292,7 @@ message ListApiKeysResponse {
 }
 
 message EnableApiKeyRequest {
-  int64 site_id = 1;
-  string key_id = 2;
+  string api_key_id = 1;
 }
 
 message EnableApiKeyResponse {
@@ -280,8 +300,7 @@ message EnableApiKeyResponse {
 }
 
 message DisableApiKeyRequest {
-  int64 site_id = 1;
-  string key_id = 2;
+  string api_key_id = 1;
 }
 
 message DisableApiKeyResponse {
@@ -289,22 +308,28 @@ message DisableApiKeyResponse {
 }
 
 message UpdateApiKeyRequest {
-  int64 site_id = 1;
-  string key_id = 2;
-  optional string key_prefix = 3;
-  optional string site_secret = 4;
-  optional int32 status = 5;
-  google.protobuf.Timestamp expired_at = 6;
-  bool clear_expired_at = 7;
+  string api_key_id = 1;
+  optional string key_name = 2;
+  optional int32 status = 3;
+  google.protobuf.Timestamp expired_at = 4;
+  bool clear_expired_at = 5;
 }
 
 message UpdateApiKeyResponse {
   ApiKey api_key = 1;
 }
 
+message RotateApiKeySecretRequest {
+  string api_key_id = 1;
+}
+
+message RotateApiKeySecretResponse {
+  ApiKey api_key = 1;
+  string credential = 2;
+}
+
 message DeleteApiKeyRequest {
-  int64 site_id = 1;
-  string key_id = 2;
+  string api_key_id = 1;
 }
 
 message DeleteApiKeyResponse {}
@@ -353,12 +378,16 @@ message DeleteOrganizationResponse {}
 message CreateUserRequest {
   string user_name = 1;
   string password = 2;
-  UserRole role = 3;
-  // Required for HUMAN users; service accounts carry
-  // USER_CLASS_UNSPECIFIED implicitly. Server validates the
-  // (role, account_kind, user_class) tuple per
-  // docs/design/abac-design.md §3.3.
-  UserClass user_class = 4;
+  // Cedar role. Required and non-empty for HUMAN users;
+  // SERVICE_ACCOUNT principals MUST leave this empty (the PIP
+  // injects `system_service_account` at runtime). Server rejects
+  // unknown role names with `META_ROLE_UNKNOWN`, and refuses the
+  // call if the role is not present in `roles`. Tag 4 is fresh
+  // post-rename (was `business_role`); legacy `role` (tag 3,
+  // admin bit) stays reserved.
+  string role = 4;
+  reserved 3;
+  reserved "user_class";
 }
 
 message CreateUserResponse {
@@ -382,12 +411,14 @@ message ListUsersResponse {
 message UpdateUserRequest {
   string user_name = 1;
   optional string password = 2;
-  optional UserRole role = 3;
-  // Optional: change the business identity. Server rejects the
-  // update if the resulting (role, account_kind, user_class) tuple
-  // violates the consistency constraints in
-  // docs/design/abac-design.md §3.3.
-  optional UserClass user_class = 4;
+  // Optional: change the Cedar role. Server rejects the update
+  // if `role` is not registered, or if `min_required_holders`
+  // would be breached by demoting the last holder of a critical
+  // role. Tag 4 is fresh post-rename (was `business_role`);
+  // legacy `role` (tag 3, admin bit) stays reserved.
+  optional string role = 4;
+  reserved 3;
+  reserved "user_class";
 }
 
 message UpdateUserResponse {

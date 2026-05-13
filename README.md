@@ -285,6 +285,8 @@ archebase-endpoints.json
 
 顶层必须包含 `auth`、`gateway` 和 `deviceInit`。每组 endpoint 只接受 `scheme`、`host` 和 `port`；旧字段名 `schema` 不再接受。`http` 会使用 plaintext gRPC 连接，`https` 会使用 TLS gRPC 连接。认证、上传网关和设备初始化可以分别指定不同的 `scheme`、`host` 和 `port`。
 
+阿里云 ACK 环境中，这三组 endpoint 分别对应 `dp-auth` public gRPC、`dp-gateway` public gRPC 和 device-init public gRPC。它们可以来自 `data-platform` 部署脚本输出的 public NLB endpoint 摘要；不要使用 Operation HTTP 的 `/api/operation/v1` 地址作为 SDK 上传网关 endpoint。Operation HTTP 只用于本仓库本地集成 bootstrap 脚本创建测试 site、API key 和设备。
+
 `initialize` 会先完整解析和校验 JSON，成功后才创建目录并原子写入文件。重复传入等价 endpoint 内容会幂等成功；如果目标文件已经存在且内容不同，会抛出 `DataGatewayClientError.endpointsAlreadyInitialized(endpointsURL:)`，避免 App 无意中静默切换服务端。
 
 SwiftPM 命令行构建示例：

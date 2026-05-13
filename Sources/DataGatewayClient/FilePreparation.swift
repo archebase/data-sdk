@@ -1028,7 +1028,16 @@ public actor UploadCoordinator {
             expectedFingerprint: state.fileFingerprint
         )
 
-        let recovery = try await self.dependencies.gatewayClient.getUploadRecovery(logicalUploadID: logicalUploadID)
+        let recovery: Archebase_DataGateway_V1_GetUploadRecoveryResponse
+        do {
+            recovery = try await self.dependencies.gatewayClient.getUploadRecovery(logicalUploadID: logicalUploadID)
+        } catch let error as DataGatewayClientError {
+            guard case .gatewayFailed(_, let detailCode, _) = error,
+                  detailCode == "DATA_GATEWAY_UPLOAD_NOT_FOUND" else {
+                throw error
+            }
+            return try await self.restartUpload(state: state, onEvent: onEvent)
+        }
         switch Self.decideResumeAction(state: state, recovery: recovery) {
         case .continueExisting:
             return try await self.continueExistingUpload(state: state, recovery: recovery, onEvent: onEvent)

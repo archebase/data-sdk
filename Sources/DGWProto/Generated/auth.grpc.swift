@@ -757,16 +757,29 @@ public enum Archebase_Auth_V1_AdminAuthService: Sendable {
                 type: .unary
             )
         }
-        /// Namespace for "CreateApiKey" metadata.
-        public enum CreateApiKey: Sendable {
-            /// Request type for "CreateApiKey".
-            public typealias Input = Archebase_Auth_V1_CreateApiKeyRequest
-            /// Response type for "CreateApiKey".
-            public typealias Output = Archebase_Auth_V1_CreateApiKeyResponse
-            /// Descriptor for "CreateApiKey".
+        /// Namespace for "CreateSiteApiKey" metadata.
+        public enum CreateSiteApiKey: Sendable {
+            /// Request type for "CreateSiteApiKey".
+            public typealias Input = Archebase_Auth_V1_CreateSiteApiKeyRequest
+            /// Response type for "CreateSiteApiKey".
+            public typealias Output = Archebase_Auth_V1_CreateSiteApiKeyResponse
+            /// Descriptor for "CreateSiteApiKey".
             public static let descriptor = GRPCCore.MethodDescriptor(
                 service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "archebase.auth.v1.AdminAuthService"),
-                method: "CreateApiKey",
+                method: "CreateSiteApiKey",
+                type: .unary
+            )
+        }
+        /// Namespace for "CreateOrRotateDeviceApiKey" metadata.
+        public enum CreateOrRotateDeviceApiKey: Sendable {
+            /// Request type for "CreateOrRotateDeviceApiKey".
+            public typealias Input = Archebase_Auth_V1_CreateOrRotateDeviceApiKeyRequest
+            /// Response type for "CreateOrRotateDeviceApiKey".
+            public typealias Output = Archebase_Auth_V1_CreateOrRotateDeviceApiKeyResponse
+            /// Descriptor for "CreateOrRotateDeviceApiKey".
+            public static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "archebase.auth.v1.AdminAuthService"),
+                method: "CreateOrRotateDeviceApiKey",
                 type: .unary
             )
         }
@@ -796,6 +809,19 @@ public enum Archebase_Auth_V1_AdminAuthService: Sendable {
                 type: .unary
             )
         }
+        /// Namespace for "UpdateApiKey" metadata.
+        public enum UpdateApiKey: Sendable {
+            /// Request type for "UpdateApiKey".
+            public typealias Input = Archebase_Auth_V1_UpdateApiKeyRequest
+            /// Response type for "UpdateApiKey".
+            public typealias Output = Archebase_Auth_V1_UpdateApiKeyResponse
+            /// Descriptor for "UpdateApiKey".
+            public static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "archebase.auth.v1.AdminAuthService"),
+                method: "UpdateApiKey",
+                type: .unary
+            )
+        }
         /// Namespace for "EnableApiKey" metadata.
         public enum EnableApiKey: Sendable {
             /// Request type for "EnableApiKey".
@@ -822,16 +848,16 @@ public enum Archebase_Auth_V1_AdminAuthService: Sendable {
                 type: .unary
             )
         }
-        /// Namespace for "UpdateApiKey" metadata.
-        public enum UpdateApiKey: Sendable {
-            /// Request type for "UpdateApiKey".
-            public typealias Input = Archebase_Auth_V1_UpdateApiKeyRequest
-            /// Response type for "UpdateApiKey".
-            public typealias Output = Archebase_Auth_V1_UpdateApiKeyResponse
-            /// Descriptor for "UpdateApiKey".
+        /// Namespace for "RotateApiKeySecret" metadata.
+        public enum RotateApiKeySecret: Sendable {
+            /// Request type for "RotateApiKeySecret".
+            public typealias Input = Archebase_Auth_V1_RotateApiKeySecretRequest
+            /// Response type for "RotateApiKeySecret".
+            public typealias Output = Archebase_Auth_V1_RotateApiKeySecretResponse
+            /// Descriptor for "RotateApiKeySecret".
             public static let descriptor = GRPCCore.MethodDescriptor(
                 service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "archebase.auth.v1.AdminAuthService"),
-                method: "UpdateApiKey",
+                method: "RotateApiKeySecret",
                 type: .unary
             )
         }
@@ -922,12 +948,14 @@ public enum Archebase_Auth_V1_AdminAuthService: Sendable {
             DisableSite.descriptor,
             UpdateSite.descriptor,
             DeleteSite.descriptor,
-            CreateApiKey.descriptor,
+            CreateSiteApiKey.descriptor,
+            CreateOrRotateDeviceApiKey.descriptor,
             GetApiKey.descriptor,
             ListApiKeys.descriptor,
+            UpdateApiKey.descriptor,
             EnableApiKey.descriptor,
             DisableApiKey.descriptor,
-            UpdateApiKey.descriptor,
+            RotateApiKeySecret.descriptor,
             DeleteApiKey.descriptor,
             CreateOrganization.descriptor,
             GetOrganization.descriptor,
@@ -1086,23 +1114,42 @@ extension Archebase_Auth_V1_AdminAuthService {
             onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_Auth_V1_DeleteSiteResponse>) async throws -> Result
         ) async throws -> Result where Result: Sendable
 
-        /// Call the "CreateApiKey" method.
+        /// Call the "CreateSiteApiKey" method.
         ///
         /// - Parameters:
-        ///   - request: A request containing a single `Archebase_Auth_V1_CreateApiKeyRequest` message.
-        ///   - serializer: A serializer for `Archebase_Auth_V1_CreateApiKeyRequest` messages.
-        ///   - deserializer: A deserializer for `Archebase_Auth_V1_CreateApiKeyResponse` messages.
+        ///   - request: A request containing a single `Archebase_Auth_V1_CreateSiteApiKeyRequest` message.
+        ///   - serializer: A serializer for `Archebase_Auth_V1_CreateSiteApiKeyRequest` messages.
+        ///   - deserializer: A deserializer for `Archebase_Auth_V1_CreateSiteApiKeyResponse` messages.
         ///   - options: Options to apply to this RPC.
         ///   - handleResponse: A closure which handles the response, the result of which is
         ///       returned to the caller. Returning from the closure will cancel the RPC if it
         ///       hasn't already finished.
         /// - Returns: The result of `handleResponse`.
-        func createApiKey<Result>(
-            request: GRPCCore.ClientRequest<Archebase_Auth_V1_CreateApiKeyRequest>,
-            serializer: some GRPCCore.MessageSerializer<Archebase_Auth_V1_CreateApiKeyRequest>,
-            deserializer: some GRPCCore.MessageDeserializer<Archebase_Auth_V1_CreateApiKeyResponse>,
+        func createSiteApiKey<Result>(
+            request: GRPCCore.ClientRequest<Archebase_Auth_V1_CreateSiteApiKeyRequest>,
+            serializer: some GRPCCore.MessageSerializer<Archebase_Auth_V1_CreateSiteApiKeyRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Archebase_Auth_V1_CreateSiteApiKeyResponse>,
             options: GRPCCore.CallOptions,
-            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_Auth_V1_CreateApiKeyResponse>) async throws -> Result
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_Auth_V1_CreateSiteApiKeyResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "CreateOrRotateDeviceApiKey" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Archebase_Auth_V1_CreateOrRotateDeviceApiKeyRequest` message.
+        ///   - serializer: A serializer for `Archebase_Auth_V1_CreateOrRotateDeviceApiKeyRequest` messages.
+        ///   - deserializer: A deserializer for `Archebase_Auth_V1_CreateOrRotateDeviceApiKeyResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func createOrRotateDeviceApiKey<Result>(
+            request: GRPCCore.ClientRequest<Archebase_Auth_V1_CreateOrRotateDeviceApiKeyRequest>,
+            serializer: some GRPCCore.MessageSerializer<Archebase_Auth_V1_CreateOrRotateDeviceApiKeyRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Archebase_Auth_V1_CreateOrRotateDeviceApiKeyResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_Auth_V1_CreateOrRotateDeviceApiKeyResponse>) async throws -> Result
         ) async throws -> Result where Result: Sendable
 
         /// Call the "GetApiKey" method.
@@ -1143,6 +1190,25 @@ extension Archebase_Auth_V1_AdminAuthService {
             onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_Auth_V1_ListApiKeysResponse>) async throws -> Result
         ) async throws -> Result where Result: Sendable
 
+        /// Call the "UpdateApiKey" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Archebase_Auth_V1_UpdateApiKeyRequest` message.
+        ///   - serializer: A serializer for `Archebase_Auth_V1_UpdateApiKeyRequest` messages.
+        ///   - deserializer: A deserializer for `Archebase_Auth_V1_UpdateApiKeyResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func updateApiKey<Result>(
+            request: GRPCCore.ClientRequest<Archebase_Auth_V1_UpdateApiKeyRequest>,
+            serializer: some GRPCCore.MessageSerializer<Archebase_Auth_V1_UpdateApiKeyRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Archebase_Auth_V1_UpdateApiKeyResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_Auth_V1_UpdateApiKeyResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
         /// Call the "EnableApiKey" method.
         ///
         /// - Parameters:
@@ -1181,23 +1247,23 @@ extension Archebase_Auth_V1_AdminAuthService {
             onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_Auth_V1_DisableApiKeyResponse>) async throws -> Result
         ) async throws -> Result where Result: Sendable
 
-        /// Call the "UpdateApiKey" method.
+        /// Call the "RotateApiKeySecret" method.
         ///
         /// - Parameters:
-        ///   - request: A request containing a single `Archebase_Auth_V1_UpdateApiKeyRequest` message.
-        ///   - serializer: A serializer for `Archebase_Auth_V1_UpdateApiKeyRequest` messages.
-        ///   - deserializer: A deserializer for `Archebase_Auth_V1_UpdateApiKeyResponse` messages.
+        ///   - request: A request containing a single `Archebase_Auth_V1_RotateApiKeySecretRequest` message.
+        ///   - serializer: A serializer for `Archebase_Auth_V1_RotateApiKeySecretRequest` messages.
+        ///   - deserializer: A deserializer for `Archebase_Auth_V1_RotateApiKeySecretResponse` messages.
         ///   - options: Options to apply to this RPC.
         ///   - handleResponse: A closure which handles the response, the result of which is
         ///       returned to the caller. Returning from the closure will cancel the RPC if it
         ///       hasn't already finished.
         /// - Returns: The result of `handleResponse`.
-        func updateApiKey<Result>(
-            request: GRPCCore.ClientRequest<Archebase_Auth_V1_UpdateApiKeyRequest>,
-            serializer: some GRPCCore.MessageSerializer<Archebase_Auth_V1_UpdateApiKeyRequest>,
-            deserializer: some GRPCCore.MessageDeserializer<Archebase_Auth_V1_UpdateApiKeyResponse>,
+        func rotateApiKeySecret<Result>(
+            request: GRPCCore.ClientRequest<Archebase_Auth_V1_RotateApiKeySecretRequest>,
+            serializer: some GRPCCore.MessageSerializer<Archebase_Auth_V1_RotateApiKeySecretRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Archebase_Auth_V1_RotateApiKeySecretResponse>,
             options: GRPCCore.CallOptions,
-            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_Auth_V1_UpdateApiKeyResponse>) async throws -> Result
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_Auth_V1_RotateApiKeySecretResponse>) async throws -> Result
         ) async throws -> Result where Result: Sendable
 
         /// Call the "DeleteApiKey" method.
@@ -1541,29 +1607,59 @@ extension Archebase_Auth_V1_AdminAuthService {
             )
         }
 
-        /// Call the "CreateApiKey" method.
+        /// Call the "CreateSiteApiKey" method.
         ///
         /// - Parameters:
-        ///   - request: A request containing a single `Archebase_Auth_V1_CreateApiKeyRequest` message.
-        ///   - serializer: A serializer for `Archebase_Auth_V1_CreateApiKeyRequest` messages.
-        ///   - deserializer: A deserializer for `Archebase_Auth_V1_CreateApiKeyResponse` messages.
+        ///   - request: A request containing a single `Archebase_Auth_V1_CreateSiteApiKeyRequest` message.
+        ///   - serializer: A serializer for `Archebase_Auth_V1_CreateSiteApiKeyRequest` messages.
+        ///   - deserializer: A deserializer for `Archebase_Auth_V1_CreateSiteApiKeyResponse` messages.
         ///   - options: Options to apply to this RPC.
         ///   - handleResponse: A closure which handles the response, the result of which is
         ///       returned to the caller. Returning from the closure will cancel the RPC if it
         ///       hasn't already finished.
         /// - Returns: The result of `handleResponse`.
-        public func createApiKey<Result>(
-            request: GRPCCore.ClientRequest<Archebase_Auth_V1_CreateApiKeyRequest>,
-            serializer: some GRPCCore.MessageSerializer<Archebase_Auth_V1_CreateApiKeyRequest>,
-            deserializer: some GRPCCore.MessageDeserializer<Archebase_Auth_V1_CreateApiKeyResponse>,
+        public func createSiteApiKey<Result>(
+            request: GRPCCore.ClientRequest<Archebase_Auth_V1_CreateSiteApiKeyRequest>,
+            serializer: some GRPCCore.MessageSerializer<Archebase_Auth_V1_CreateSiteApiKeyRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Archebase_Auth_V1_CreateSiteApiKeyResponse>,
             options: GRPCCore.CallOptions = .defaults,
-            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_Auth_V1_CreateApiKeyResponse>) async throws -> Result = { response in
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_Auth_V1_CreateSiteApiKeyResponse>) async throws -> Result = { response in
                 try response.message
             }
         ) async throws -> Result where Result: Sendable {
             try await self.client.unary(
                 request: request,
-                descriptor: Archebase_Auth_V1_AdminAuthService.Method.CreateApiKey.descriptor,
+                descriptor: Archebase_Auth_V1_AdminAuthService.Method.CreateSiteApiKey.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "CreateOrRotateDeviceApiKey" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Archebase_Auth_V1_CreateOrRotateDeviceApiKeyRequest` message.
+        ///   - serializer: A serializer for `Archebase_Auth_V1_CreateOrRotateDeviceApiKeyRequest` messages.
+        ///   - deserializer: A deserializer for `Archebase_Auth_V1_CreateOrRotateDeviceApiKeyResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        public func createOrRotateDeviceApiKey<Result>(
+            request: GRPCCore.ClientRequest<Archebase_Auth_V1_CreateOrRotateDeviceApiKeyRequest>,
+            serializer: some GRPCCore.MessageSerializer<Archebase_Auth_V1_CreateOrRotateDeviceApiKeyRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Archebase_Auth_V1_CreateOrRotateDeviceApiKeyResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_Auth_V1_CreateOrRotateDeviceApiKeyResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Archebase_Auth_V1_AdminAuthService.Method.CreateOrRotateDeviceApiKey.descriptor,
                 serializer: serializer,
                 deserializer: deserializer,
                 options: options,
@@ -1631,6 +1727,36 @@ extension Archebase_Auth_V1_AdminAuthService {
             )
         }
 
+        /// Call the "UpdateApiKey" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Archebase_Auth_V1_UpdateApiKeyRequest` message.
+        ///   - serializer: A serializer for `Archebase_Auth_V1_UpdateApiKeyRequest` messages.
+        ///   - deserializer: A deserializer for `Archebase_Auth_V1_UpdateApiKeyResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        public func updateApiKey<Result>(
+            request: GRPCCore.ClientRequest<Archebase_Auth_V1_UpdateApiKeyRequest>,
+            serializer: some GRPCCore.MessageSerializer<Archebase_Auth_V1_UpdateApiKeyRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Archebase_Auth_V1_UpdateApiKeyResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_Auth_V1_UpdateApiKeyResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Archebase_Auth_V1_AdminAuthService.Method.UpdateApiKey.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
         /// Call the "EnableApiKey" method.
         ///
         /// - Parameters:
@@ -1691,29 +1817,29 @@ extension Archebase_Auth_V1_AdminAuthService {
             )
         }
 
-        /// Call the "UpdateApiKey" method.
+        /// Call the "RotateApiKeySecret" method.
         ///
         /// - Parameters:
-        ///   - request: A request containing a single `Archebase_Auth_V1_UpdateApiKeyRequest` message.
-        ///   - serializer: A serializer for `Archebase_Auth_V1_UpdateApiKeyRequest` messages.
-        ///   - deserializer: A deserializer for `Archebase_Auth_V1_UpdateApiKeyResponse` messages.
+        ///   - request: A request containing a single `Archebase_Auth_V1_RotateApiKeySecretRequest` message.
+        ///   - serializer: A serializer for `Archebase_Auth_V1_RotateApiKeySecretRequest` messages.
+        ///   - deserializer: A deserializer for `Archebase_Auth_V1_RotateApiKeySecretResponse` messages.
         ///   - options: Options to apply to this RPC.
         ///   - handleResponse: A closure which handles the response, the result of which is
         ///       returned to the caller. Returning from the closure will cancel the RPC if it
         ///       hasn't already finished.
         /// - Returns: The result of `handleResponse`.
-        public func updateApiKey<Result>(
-            request: GRPCCore.ClientRequest<Archebase_Auth_V1_UpdateApiKeyRequest>,
-            serializer: some GRPCCore.MessageSerializer<Archebase_Auth_V1_UpdateApiKeyRequest>,
-            deserializer: some GRPCCore.MessageDeserializer<Archebase_Auth_V1_UpdateApiKeyResponse>,
+        public func rotateApiKeySecret<Result>(
+            request: GRPCCore.ClientRequest<Archebase_Auth_V1_RotateApiKeySecretRequest>,
+            serializer: some GRPCCore.MessageSerializer<Archebase_Auth_V1_RotateApiKeySecretRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Archebase_Auth_V1_RotateApiKeySecretResponse>,
             options: GRPCCore.CallOptions = .defaults,
-            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_Auth_V1_UpdateApiKeyResponse>) async throws -> Result = { response in
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_Auth_V1_RotateApiKeySecretResponse>) async throws -> Result = { response in
                 try response.message
             }
         ) async throws -> Result where Result: Sendable {
             try await self.client.unary(
                 request: request,
-                descriptor: Archebase_Auth_V1_AdminAuthService.Method.UpdateApiKey.descriptor,
+                descriptor: Archebase_Auth_V1_AdminAuthService.Method.RotateApiKeySecret.descriptor,
                 serializer: serializer,
                 deserializer: deserializer,
                 options: options,
@@ -2081,26 +2207,51 @@ extension Archebase_Auth_V1_AdminAuthService.ClientProtocol {
         )
     }
 
-    /// Call the "CreateApiKey" method.
+    /// Call the "CreateSiteApiKey" method.
     ///
     /// - Parameters:
-    ///   - request: A request containing a single `Archebase_Auth_V1_CreateApiKeyRequest` message.
+    ///   - request: A request containing a single `Archebase_Auth_V1_CreateSiteApiKeyRequest` message.
     ///   - options: Options to apply to this RPC.
     ///   - handleResponse: A closure which handles the response, the result of which is
     ///       returned to the caller. Returning from the closure will cancel the RPC if it
     ///       hasn't already finished.
     /// - Returns: The result of `handleResponse`.
-    public func createApiKey<Result>(
-        request: GRPCCore.ClientRequest<Archebase_Auth_V1_CreateApiKeyRequest>,
+    public func createSiteApiKey<Result>(
+        request: GRPCCore.ClientRequest<Archebase_Auth_V1_CreateSiteApiKeyRequest>,
         options: GRPCCore.CallOptions = .defaults,
-        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_Auth_V1_CreateApiKeyResponse>) async throws -> Result = { response in
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_Auth_V1_CreateSiteApiKeyResponse>) async throws -> Result = { response in
             try response.message
         }
     ) async throws -> Result where Result: Sendable {
-        try await self.createApiKey(
+        try await self.createSiteApiKey(
             request: request,
-            serializer: GRPCProtobuf.ProtobufSerializer<Archebase_Auth_V1_CreateApiKeyRequest>(),
-            deserializer: GRPCProtobuf.ProtobufDeserializer<Archebase_Auth_V1_CreateApiKeyResponse>(),
+            serializer: GRPCProtobuf.ProtobufSerializer<Archebase_Auth_V1_CreateSiteApiKeyRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Archebase_Auth_V1_CreateSiteApiKeyResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "CreateOrRotateDeviceApiKey" method.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Archebase_Auth_V1_CreateOrRotateDeviceApiKeyRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func createOrRotateDeviceApiKey<Result>(
+        request: GRPCCore.ClientRequest<Archebase_Auth_V1_CreateOrRotateDeviceApiKeyRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_Auth_V1_CreateOrRotateDeviceApiKeyResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.createOrRotateDeviceApiKey(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Archebase_Auth_V1_CreateOrRotateDeviceApiKeyRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Archebase_Auth_V1_CreateOrRotateDeviceApiKeyResponse>(),
             options: options,
             onResponse: handleResponse
         )
@@ -2156,6 +2307,31 @@ extension Archebase_Auth_V1_AdminAuthService.ClientProtocol {
         )
     }
 
+    /// Call the "UpdateApiKey" method.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Archebase_Auth_V1_UpdateApiKeyRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func updateApiKey<Result>(
+        request: GRPCCore.ClientRequest<Archebase_Auth_V1_UpdateApiKeyRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_Auth_V1_UpdateApiKeyResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.updateApiKey(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Archebase_Auth_V1_UpdateApiKeyRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Archebase_Auth_V1_UpdateApiKeyResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
     /// Call the "EnableApiKey" method.
     ///
     /// - Parameters:
@@ -2206,26 +2382,26 @@ extension Archebase_Auth_V1_AdminAuthService.ClientProtocol {
         )
     }
 
-    /// Call the "UpdateApiKey" method.
+    /// Call the "RotateApiKeySecret" method.
     ///
     /// - Parameters:
-    ///   - request: A request containing a single `Archebase_Auth_V1_UpdateApiKeyRequest` message.
+    ///   - request: A request containing a single `Archebase_Auth_V1_RotateApiKeySecretRequest` message.
     ///   - options: Options to apply to this RPC.
     ///   - handleResponse: A closure which handles the response, the result of which is
     ///       returned to the caller. Returning from the closure will cancel the RPC if it
     ///       hasn't already finished.
     /// - Returns: The result of `handleResponse`.
-    public func updateApiKey<Result>(
-        request: GRPCCore.ClientRequest<Archebase_Auth_V1_UpdateApiKeyRequest>,
+    public func rotateApiKeySecret<Result>(
+        request: GRPCCore.ClientRequest<Archebase_Auth_V1_RotateApiKeySecretRequest>,
         options: GRPCCore.CallOptions = .defaults,
-        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_Auth_V1_UpdateApiKeyResponse>) async throws -> Result = { response in
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_Auth_V1_RotateApiKeySecretResponse>) async throws -> Result = { response in
             try response.message
         }
     ) async throws -> Result where Result: Sendable {
-        try await self.updateApiKey(
+        try await self.rotateApiKeySecret(
             request: request,
-            serializer: GRPCProtobuf.ProtobufSerializer<Archebase_Auth_V1_UpdateApiKeyRequest>(),
-            deserializer: GRPCProtobuf.ProtobufDeserializer<Archebase_Auth_V1_UpdateApiKeyResponse>(),
+            serializer: GRPCProtobuf.ProtobufSerializer<Archebase_Auth_V1_RotateApiKeySecretRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Archebase_Auth_V1_RotateApiKeySecretResponse>(),
             options: options,
             onResponse: handleResponse
         )
@@ -2588,7 +2764,7 @@ extension Archebase_Auth_V1_AdminAuthService.ClientProtocol {
         )
     }
 
-    /// Call the "CreateApiKey" method.
+    /// Call the "CreateSiteApiKey" method.
     ///
     /// - Parameters:
     ///   - message: request message to send.
@@ -2598,19 +2774,48 @@ extension Archebase_Auth_V1_AdminAuthService.ClientProtocol {
     ///       returned to the caller. Returning from the closure will cancel the RPC if it
     ///       hasn't already finished.
     /// - Returns: The result of `handleResponse`.
-    public func createApiKey<Result>(
-        _ message: Archebase_Auth_V1_CreateApiKeyRequest,
+    public func createSiteApiKey<Result>(
+        _ message: Archebase_Auth_V1_CreateSiteApiKeyRequest,
         metadata: GRPCCore.Metadata = [:],
         options: GRPCCore.CallOptions = .defaults,
-        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_Auth_V1_CreateApiKeyResponse>) async throws -> Result = { response in
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_Auth_V1_CreateSiteApiKeyResponse>) async throws -> Result = { response in
             try response.message
         }
     ) async throws -> Result where Result: Sendable {
-        let request = GRPCCore.ClientRequest<Archebase_Auth_V1_CreateApiKeyRequest>(
+        let request = GRPCCore.ClientRequest<Archebase_Auth_V1_CreateSiteApiKeyRequest>(
             message: message,
             metadata: metadata
         )
-        return try await self.createApiKey(
+        return try await self.createSiteApiKey(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "CreateOrRotateDeviceApiKey" method.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func createOrRotateDeviceApiKey<Result>(
+        _ message: Archebase_Auth_V1_CreateOrRotateDeviceApiKeyRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_Auth_V1_CreateOrRotateDeviceApiKeyResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Archebase_Auth_V1_CreateOrRotateDeviceApiKeyRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.createOrRotateDeviceApiKey(
             request: request,
             options: options,
             onResponse: handleResponse
@@ -2675,6 +2880,35 @@ extension Archebase_Auth_V1_AdminAuthService.ClientProtocol {
         )
     }
 
+    /// Call the "UpdateApiKey" method.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func updateApiKey<Result>(
+        _ message: Archebase_Auth_V1_UpdateApiKeyRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_Auth_V1_UpdateApiKeyResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Archebase_Auth_V1_UpdateApiKeyRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.updateApiKey(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
     /// Call the "EnableApiKey" method.
     ///
     /// - Parameters:
@@ -2733,7 +2967,7 @@ extension Archebase_Auth_V1_AdminAuthService.ClientProtocol {
         )
     }
 
-    /// Call the "UpdateApiKey" method.
+    /// Call the "RotateApiKeySecret" method.
     ///
     /// - Parameters:
     ///   - message: request message to send.
@@ -2743,19 +2977,19 @@ extension Archebase_Auth_V1_AdminAuthService.ClientProtocol {
     ///       returned to the caller. Returning from the closure will cancel the RPC if it
     ///       hasn't already finished.
     /// - Returns: The result of `handleResponse`.
-    public func updateApiKey<Result>(
-        _ message: Archebase_Auth_V1_UpdateApiKeyRequest,
+    public func rotateApiKeySecret<Result>(
+        _ message: Archebase_Auth_V1_RotateApiKeySecretRequest,
         metadata: GRPCCore.Metadata = [:],
         options: GRPCCore.CallOptions = .defaults,
-        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_Auth_V1_UpdateApiKeyResponse>) async throws -> Result = { response in
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_Auth_V1_RotateApiKeySecretResponse>) async throws -> Result = { response in
             try response.message
         }
     ) async throws -> Result where Result: Sendable {
-        let request = GRPCCore.ClientRequest<Archebase_Auth_V1_UpdateApiKeyRequest>(
+        let request = GRPCCore.ClientRequest<Archebase_Auth_V1_RotateApiKeySecretRequest>(
             message: message,
             metadata: metadata
         )
-        return try await self.updateApiKey(
+        return try await self.rotateApiKeySecret(
             request: request,
             options: options,
             onResponse: handleResponse

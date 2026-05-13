@@ -3,27 +3,28 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SDK_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-PUBLIC_ENDPOINTS_RESOURCE="${DGW_PUBLIC_ENDPOINTS_RESOURCE:-${SDK_DIR}/Sources/DataGatewayClient/Resources/PublicEndpoints.json}"
+PUBLIC_ENDPOINTS_FILE="${DGW_PUBLIC_ENDPOINTS_FILE:-${DGW_PUBLIC_ENDPOINTS_RESOURCE:-${SDK_DIR}/Sources/DataGatewayClient/Resources/PublicEndpoints.json}}"
 MARKER_BEGIN="# archebase-swift-sdk-public-dns begin"
 MARKER_END="# archebase-swift-sdk-public-dns end"
 LOCAL_IP="${DGW_PUBLIC_DNS_LOCAL_IP:-127.0.0.1}"
 
 read_public_endpoint_field() {
-  python3 - "$PUBLIC_ENDPOINTS_RESOURCE" "$1" "$2" <<'PY'
+  python3 - "$PUBLIC_ENDPOINTS_FILE" "$1" "$2" <<'PY'
 import json
 import pathlib
+import os
 import sys
 
 path = pathlib.Path(sys.argv[1])
 service = sys.argv[2]
 field = sys.argv[3]
-payload = json.loads(path.read_text())
+inline_json = os.environ.get("DGW_PUBLIC_ENDPOINTS_JSON", "").strip()
+payload = json.loads(inline_json) if inline_json else json.loads(path.read_text())
 endpoint = payload[service]
 value = endpoint.get(field)
-if field == "scheme" and value is None:
-    value = endpoint.get("schema")
 if value is None:
-    raise SystemExit(f"missing {service}.{field} in {path}")
+    source = "DGW_PUBLIC_ENDPOINTS_JSON" if inline_json else str(path)
+    raise SystemExit(f"missing {service}.{field} in {source}")
 if field == "scheme":
     value = str(value).lower()
 print(value)
@@ -59,7 +60,8 @@ Commands:
 
 Environment:
   DGW_PUBLIC_DNS_RUN=1 is required for prepare-hosts, start-proxies, and run-tests.
-  DGW_PUBLIC_ENDPOINTS_RESOURCE can point to an alternate PublicEndpoints.json.
+  DGW_PUBLIC_ENDPOINTS_JSON or DGW_PUBLIC_ENDPOINTS_FILE can provide the current endpoint JSON.
+  DGW_PUBLIC_ENDPOINTS_RESOURCE is accepted as a compatibility alias for DGW_PUBLIC_ENDPOINTS_FILE.
   DGW_LOCAL_AUTH_ENDPOINT, DGW_LOCAL_GATEWAY_ENDPOINT, and DGW_LOCAL_INIT_ENDPOINT point to local plaintext gRPC targets.
   DGW_LOCAL_CREDENTIAL_BASE64, DGW_LOCAL_DEVICE_ID, and DGW_LOCAL_PERSIST_ROOT are passed through to integration tests.
 
@@ -226,6 +228,9 @@ run_tests() {
   export DGW_REAL_CREDENTIAL_BASE64="${DGW_LOCAL_CREDENTIAL_BASE64:-${DGW_REAL_CREDENTIAL_BASE64:-}}"
   export DGW_REAL_DEVICE_ID="${DGW_LOCAL_DEVICE_ID:-${DGW_REAL_DEVICE_ID:-}}"
   export DGW_REAL_PERSIST_ROOT="${DGW_LOCAL_PERSIST_ROOT:-${DGW_REAL_PERSIST_ROOT:-$(mktemp -d /tmp/swift-dgw-public-dns.XXXXXX)}}"
+  if [[ -z "${DGW_PUBLIC_ENDPOINTS_JSON:-}" && -z "${DGW_PUBLIC_ENDPOINTS_FILE:-}" && -f "$PUBLIC_ENDPOINTS_FILE" ]]; then
+    export DGW_PUBLIC_ENDPOINTS_FILE="$PUBLIC_ENDPOINTS_FILE"
+  fi
   export DGW_OSS_TEST_ENDPOINT="${DGW_OSS_TEST_ENDPOINT:-https://oss-cn-shanghai.aliyuncs.com}"
   export DGW_OSS_TEST_BUCKET="${DGW_OSS_TEST_BUCKET:-public-dns-placeholder}"
   export DGW_OSS_TEST_ACCESS_KEY_ID="${DGW_OSS_TEST_ACCESS_KEY_ID:-placeholder}"

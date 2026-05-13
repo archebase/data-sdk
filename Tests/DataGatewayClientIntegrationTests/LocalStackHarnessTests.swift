@@ -66,7 +66,7 @@ struct LocalStackHarnessTests {
 
 @Test func localStackBootstrapConfigUsesExplicitEnvironmentOverrides() throws {
     let environment = LocalStackTestEnvironment(environment: [
-        "DGW_LOCAL_GATEWAY_HTTP_BASE": "http://127.0.0.1:18098",
+        "DGW_LOCAL_OPERATION_HTTP_BASE": "http://127.0.0.1:18098",
         "DGW_LOCAL_BOOTSTRAP_ADMIN_PASSWORD": "ci-admin-password",
         "DGW_LOCAL_BOOTSTRAP_ORGANIZATION": "system",
         "DGW_LOCAL_BOOTSTRAP_ADMIN_USER": "admin",
@@ -80,7 +80,7 @@ struct LocalStackHarnessTests {
 
     let config = try environment.makeBootstrapConfig()
 
-    #expect(config.gatewayBaseURL == URL(string: "http://127.0.0.1:18098")!)
+    #expect(config.operationBaseURL == URL(string: "http://127.0.0.1:18098")!)
     #expect(config.organization == "system")
     #expect(config.adminUserName == "admin")
     #expect(config.adminPassword == "ci-admin-password")
@@ -94,7 +94,7 @@ struct LocalStackHarnessTests {
 
 @Test func localStackBootstrapConfigSuppliesStableDefaults() throws {
     let config = try LocalStackTestEnvironment(environment: [
-        "DGW_LOCAL_GATEWAY_HTTP_BASE": "http://127.0.0.1:18098/",
+        "DGW_LOCAL_OPERATION_HTTP_BASE": "http://127.0.0.1:18098/",
         "DGW_LOCAL_BOOTSTRAP_ADMIN_PASSWORD": "ci-admin-password",
     ]).makeBootstrapConfig()
 
@@ -108,22 +108,22 @@ struct LocalStackHarnessTests {
     #expect(config.csrfOrigin == "http://127.0.0.1:18098")
 }
 
-@Test func localStackBootstrapConfigRequiresGatewayBaseAndAdminPassword() {
-    let missingGateway = LocalStackTestEnvironment(environment: [
+@Test func localStackBootstrapConfigRequiresOperationBaseAndAdminPassword() {
+    let missingOperation = LocalStackTestEnvironment(environment: [
         "DGW_LOCAL_BOOTSTRAP_ADMIN_PASSWORD": "ci-admin-password",
     ])
     let missingPassword = LocalStackTestEnvironment(environment: [
-        "DGW_LOCAL_GATEWAY_HTTP_BASE": "http://127.0.0.1:18098",
+        "DGW_LOCAL_OPERATION_HTTP_BASE": "http://127.0.0.1:18098",
     ])
 
-    let gatewayError = #expect(throws: LocalStackHarnessError.self) {
-        try missingGateway.makeBootstrapConfig()
+    let operationError = #expect(throws: LocalStackHarnessError.self) {
+        try missingOperation.makeBootstrapConfig()
     }
     let passwordError = #expect(throws: LocalStackHarnessError.self) {
         try missingPassword.makeBootstrapConfig()
     }
 
-    #expect(gatewayError == .missingEnvironmentVariable("DGW_LOCAL_GATEWAY_HTTP_BASE"))
+    #expect(operationError == .missingEnvironmentVariable("DGW_LOCAL_OPERATION_HTTP_BASE"))
     #expect(passwordError == .missingEnvironmentVariable("DGW_LOCAL_BOOTSTRAP_ADMIN_PASSWORD"))
 }
 
@@ -137,7 +137,7 @@ struct LocalStackHarnessTests {
 
     #expect(script.contains("scripts/local_run.sh --build debug --deploy --reset-db"))
     #expect(script.contains("DATA_GATEWAY_USE_MOCK_STS=true"))
-    #expect(script.contains("DGW_LOCAL_GATEWAY_HTTP_BASE"))
+    #expect(script.contains("DGW_LOCAL_OPERATION_HTTP_BASE"))
     #expect(script.contains("DGW_LOCAL_BOOTSTRAP_ADMIN_PASSWORD"))
     #expect(script.contains("DGW_LOCAL_BOOTSTRAP_MAX_TIME_SECONDS"))
     #expect(script.contains("DGW_LOCAL_BOOTSTRAP_CONNECT_TIMEOUT_SECONDS"))
@@ -148,12 +148,15 @@ struct LocalStackHarnessTests {
     #expect(script.contains("DGW_LOCAL_UNBOUND_DEVICE_ID"))
     #expect(script.contains("DGW_LOCAL_INIT_ENDPOINT"))
     #expect(script.contains("curl -sS -X POST"))
-    #expect(script.contains("/api/dataplatform/v1/auth/login"))
-    #expect(script.contains("/api/dataplatform/v1/sites"))
-    #expect(script.contains("/api/dataplatform/v1/sites/${SITE_ID}/api-keys"))
-    #expect(script.contains("/api/dataplatform/v1/devices:register"))
-    #expect(script.contains("/api/dataplatform/v1/deviceSuites"))
-    #expect(script.contains(":addDevice"))
+    #expect(script.contains("AdminAuthService/CreateSiteApiKey"))
+    #expect(!script.contains("AdminAuthService/CreateApiKey"))
+    #expect(script.contains("/api/operation/v1/auth/login"))
+    #expect(script.contains("/api/operation/v1/sites"))
+    #expect(script.contains("/api/operation/v1/sites/${SITE_ID}/api-keys"))
+    #expect(script.contains("/api/operation/v1/devices:register"))
+    #expect(script.contains("/api/operation/v1/deviceSuites"))
+    #expect(script.contains(#""suite":$(json_string "$SUITE_NAME")"#))
+    #expect(script.contains(":removeDevice"))
 }
 
 @Test func simulatorSmokeScriptSkipsPackageUpdatesForCachedDependencies() throws {
@@ -166,6 +169,22 @@ struct LocalStackHarnessTests {
 
     #expect(script.contains("xcodebuild build-for-testing"))
     #expect(script.contains("-skipPackageUpdates"))
+    #expect(script.contains("DGW_PUBLIC_ENDPOINTS_JSON"))
+    #expect(script.contains("DGW_PUBLIC_ENDPOINTS_FILE"))
+    #expect(!script.contains(#"endpoint.get("schema")"#))
+}
+
+@Test func publicDNSPathScriptUsesCurrentEndpointContract() throws {
+    let scriptURL = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .appendingPathComponent("Scripts/public_dns_path_test.sh")
+    let script = try String(contentsOf: scriptURL, encoding: .utf8)
+
+    #expect(script.contains("DGW_PUBLIC_ENDPOINTS_JSON"))
+    #expect(script.contains("DGW_PUBLIC_ENDPOINTS_FILE"))
+    #expect(!script.contains(#"endpoint.get("schema")"#))
 }
 
 @Test func aliyunEnvironmentContractValidatesPresenceOfCredentials() {
@@ -733,11 +752,15 @@ struct LocalStackHarnessTests {
     try await client.deleteLocalSnapshot(logicalUploadID: deleteState.logicalUploadID)
     #expect(!(try await client.listPendingUploads().contains(where: { $0.logicalUploadID == deleteState.logicalUploadID })))
 
-    let cleanupResponse = try await harness.gatewayClient.abortUpload(
-        logicalUploadID: deleteState.logicalUploadID,
-        reason: "cleanup after local snapshot deletion"
-    )
-    #expect(cleanupResponse.logicalUploadID == deleteState.logicalUploadID)
+    do {
+        let cleanupResponse = try await harness.gatewayClient.abortUpload(
+            logicalUploadID: deleteState.logicalUploadID,
+            reason: "cleanup after local snapshot deletion"
+        )
+        #expect(cleanupResponse.logicalUploadID == deleteState.logicalUploadID)
+    } catch let error as DataGatewayClientError where isUploadNotFound(error) {
+        // The local snapshot deletion assertion is already complete; remote cleanup is idempotent.
+    }
 }
 
 @Test(
@@ -942,6 +965,13 @@ private func requiredValueFromEnvironment(_ key: String) throws -> String {
         throw AliyunOSSHarnessError.missingEnvironmentVariable(key)
     }
     return value
+}
+
+private func isUploadNotFound(_ error: DataGatewayClientError) -> Bool {
+    if case .gatewayFailed(_, let detailCode, _) = error {
+        return detailCode == "DATA_GATEWAY_UPLOAD_NOT_FOUND"
+    }
+    return false
 }
 
 private func requiredURLFromEnvironment(_ key: String) throws -> URL {

@@ -36,3 +36,5 @@ protoc \
   "$PROTO_ROOT/common.proto" \
   "$PROTO_ROOT/auth.proto" \
   "$PROTO_ROOT/data_gateway.proto"
+
+find "$OUT_DIR" -name '*.swift' -exec perl -pi -e 's/[ \t]+$//' {} +

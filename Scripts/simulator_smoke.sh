@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PACKAGE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-PUBLIC_ENDPOINTS_RESOURCE="${DGW_PUBLIC_ENDPOINTS_RESOURCE:-${PACKAGE_DIR}/Sources/DataGatewayClient/Resources/PublicEndpoints.json}"
+PUBLIC_ENDPOINTS_FILE="${DGW_PUBLIC_ENDPOINTS_FILE:-${DGW_PUBLIC_ENDPOINTS_RESOURCE:-${PACKAGE_DIR}/Sources/DataGatewayClient/Resources/PublicEndpoints.json}}"
 SCHEME="${DGW_IOS_SMOKE_SCHEME:-SwiftDataGatewayClient-Package}"
 DESTINATION="${DGW_IOS_SMOKE_DESTINATION:-platform=iOS Simulator,name=iPhone 17}"
 DESTINATION_TIMEOUT_SECONDS="${DGW_IOS_SMOKE_DESTINATION_TIMEOUT_SECONDS:-30}"
@@ -17,21 +17,22 @@ if [[ -n "$OTHER_SWIFT_FLAGS_VALUE" ]]; then
 fi
 
 read_public_endpoint_field() {
-  python3 - "$PUBLIC_ENDPOINTS_RESOURCE" "$1" "$2" <<'PY'
+  python3 - "$PUBLIC_ENDPOINTS_FILE" "$1" "$2" <<'PY'
 import json
 import pathlib
+import os
 import sys
 
 path = pathlib.Path(sys.argv[1])
 service = sys.argv[2]
 field = sys.argv[3]
-payload = json.loads(path.read_text())
+inline_json = os.environ.get("DGW_PUBLIC_ENDPOINTS_JSON", "").strip()
+payload = json.loads(inline_json) if inline_json else json.loads(path.read_text())
 endpoint = payload[service]
 value = endpoint.get(field)
-if field == "scheme" and value is None:
-    value = endpoint.get("schema")
 if value is None:
-    raise SystemExit(f"missing {service}.{field} in {path}")
+    source = "DGW_PUBLIC_ENDPOINTS_JSON" if inline_json else str(path)
+    raise SystemExit(f"missing {service}.{field} in {source}")
 if field == "scheme":
     value = str(value).lower()
 print(value)
@@ -71,7 +72,8 @@ Environment overrides:
   DGW_IOS_SMOKE_DERIVED_DATA_PATH
   DGW_IOS_SMOKE_PUBLIC_PATH=1 (use resource-defined public endpoint tests)
   DGW_IOS_SMOKE_OTHER_SWIFT_FLAGS (extra xcodebuild OTHER_SWIFT_FLAGS)
-  DGW_PUBLIC_ENDPOINTS_RESOURCE (alternate PublicEndpoints.json for public path readiness checks)
+  DGW_PUBLIC_ENDPOINTS_JSON or DGW_PUBLIC_ENDPOINTS_FILE (current endpoint JSON for public path tests)
+  DGW_PUBLIC_ENDPOINTS_RESOURCE (compatibility alias for DGW_PUBLIC_ENDPOINTS_FILE)
 
 Required environment for real smoke execution:
   DGW_LOCAL_AUTH_ENDPOINT (local mode only)
@@ -297,6 +299,7 @@ patch_xctestrun_public_environment() {
   local xctestrun_path="$1"
   python3 - "$xctestrun_path" "$DGW_DEVICE_ID_VALUE" "$DGW_CREDENTIAL_BASE64_VALUE" "$DGW_PERSIST_ROOT_VALUE" "$DEFAULT_TEST_TIMEOUT_SECONDS" "$MAX_TEST_TIMEOUT_SECONDS" <<'PY'
 import plistlib
+import os
 import sys
 
 path, device_id, credential, persist_root, default_timeout, max_timeout = sys.argv[1:]
@@ -325,6 +328,18 @@ for key in ("EnvironmentVariables", "TestingEnvironmentVariables"):
     variables["DGW_OSS_TEST_ACCESS_KEY_SECRET"] = "placeholder"
     variables["DGW_OSS_TEST_SECURITY_TOKEN"] = "placeholder"
     variables["DGW_OSS_TEST_OBJECT_PREFIX"] = "swift-public-dns"
+    for env_key in (
+        "DGW_PUBLIC_ENDPOINTS_JSON",
+        "DGW_PUBLIC_ENDPOINTS_FILE",
+        "DGW_REAL_AUTH_ENDPOINT",
+        "DGW_REAL_GATEWAY_ENDPOINT",
+        "DGW_REAL_INIT_ENDPOINT",
+        "DGW_REAL_DEVICE_INIT_ENDPOINT",
+        "DGW_REAL_TLS_MODE",
+    ):
+        env_value = os.environ.get(env_key)
+        if env_value:
+            variables[env_key] = env_value
 
 target["TestTimeoutsEnabled"] = True
 target["DefaultTestExecutionTimeAllowance"] = int(default_timeout)

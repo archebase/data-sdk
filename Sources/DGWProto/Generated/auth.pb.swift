@@ -20,11 +20,11 @@ fileprivate struct _GeneratedWithProtocGenSwiftVersion: SwiftProtobuf.ProtobufAP
   typealias Version = _2
 }
 
-public enum Archebase_Auth_V1_UserRole: SwiftProtobuf.Enum, Swift.CaseIterable {
+public enum Archebase_Auth_V1_ApiKeyOwnerKind: SwiftProtobuf.Enum, Swift.CaseIterable {
   public typealias RawValue = Int
   case unspecified // = 0
-  case administrators // = 1
-  case normalUsers // = 2
+  case site // = 1
+  case device // = 2
   case UNRECOGNIZED(Int)
 
   public init() {
@@ -34,8 +34,8 @@ public enum Archebase_Auth_V1_UserRole: SwiftProtobuf.Enum, Swift.CaseIterable {
   public init?(rawValue: Int) {
     switch rawValue {
     case 0: self = .unspecified
-    case 1: self = .administrators
-    case 2: self = .normalUsers
+    case 1: self = .site
+    case 2: self = .device
     default: self = .UNRECOGNIZED(rawValue)
     }
   }
@@ -43,17 +43,17 @@ public enum Archebase_Auth_V1_UserRole: SwiftProtobuf.Enum, Swift.CaseIterable {
   public var rawValue: Int {
     switch self {
     case .unspecified: return 0
-    case .administrators: return 1
-    case .normalUsers: return 2
+    case .site: return 1
+    case .device: return 2
     case .UNRECOGNIZED(let i): return i
     }
   }
 
   // The compiler won't synthesize support with the UNRECOGNIZED case.
-  public static let allCases: [Archebase_Auth_V1_UserRole] = [
+  public static let allCases: [Archebase_Auth_V1_ApiKeyOwnerKind] = [
     .unspecified,
-    .administrators,
-    .normalUsers,
+    .site,
+    .device,
   ]
 
 }
@@ -113,7 +113,7 @@ public struct Archebase_Auth_V1_ExchangeCredentialRequest: Sendable {
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  public var credentialBase64: String = String()
+  public var credential: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -131,13 +131,20 @@ public struct Archebase_Auth_V1_ExchangeCredentialResponse: Sendable {
 
   public var tokenType: String = String()
 
-  public var keyID: String = String()
-
-  public var keyPrefix: String = String()
+  public var principal: Archebase_Auth_V1_ApiKeyPrincipal {
+    get {_principal ?? Archebase_Auth_V1_ApiKeyPrincipal()}
+    set {_principal = newValue}
+  }
+  /// Returns true if `principal` has been explicitly set.
+  public var hasPrincipal: Bool {self._principal != nil}
+  /// Clears the value of `principal`. Subsequent reads from it will return its default value.
+  public mutating func clearPrincipal() {self._principal = nil}
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
+
+  fileprivate var _principal: Archebase_Auth_V1_ApiKeyPrincipal? = nil
 }
 
 public struct Archebase_Auth_V1_LoginRequest: Sendable {
@@ -271,8 +278,6 @@ public struct Archebase_Auth_V1_User: Sendable {
 
   public var userName: String = String()
 
-  public var role: Archebase_Auth_V1_UserRole = .unspecified
-
   public var lastLoginAt: SwiftProtobuf.Google_Protobuf_Timestamp {
     get {_lastLoginAt ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
     set {_lastLoginAt = newValue}
@@ -299,6 +304,22 @@ public struct Archebase_Auth_V1_User: Sendable {
   public var hasUpdatedAt: Bool {self._updatedAt != nil}
   /// Clears the value of `updatedAt`. Subsequent reads from it will return its default value.
   public mutating func clearUpdatedAt() {self._updatedAt = nil}
+
+  /// Cedar-era role string. The single source of truth for a
+  /// HUMAN user's authorization identity. Empty string for
+  /// SERVICE_ACCOUNT principals; a synthetic
+  /// `system_service_account` role is injected at PIP time, see
+  /// `common/src/abac/subject.rs`. The legacy `role` (UserRole
+  /// enum, admin bit) and `user_class` (UserClass enum) fields
+  /// were both deleted during the role redesign. The legacy `role`
+  /// tag (3) stays reserved so renaming the string field to `role`
+  /// here at a fresh tag (7) cannot collide with old clients that
+  /// still encode the legacy admin bit.
+  public var role: String = String()
+
+  public var organizationID: Int64 = 0
+
+  public var userID: Int64 = 0
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -381,16 +402,36 @@ public struct Archebase_Auth_V1_Site: Sendable {
   fileprivate var _updatedAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
 }
 
-public struct Archebase_Auth_V1_ApiKey: Sendable {
+public struct Archebase_Auth_V1_ApiKeyPrincipal: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
   public var siteID: Int64 = 0
 
-  public var keyID: String = String()
+  public var apiKeyID: String = String()
 
-  public var keyPrefix: String = String()
+  public var keyName: String = String()
+
+  public var ownerKind: Archebase_Auth_V1_ApiKeyOwnerKind = .unspecified
+
+  public var deviceID: String = String()
+
+  public var suiteID: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public struct Archebase_Auth_V1_ApiKey: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var apiKeyID: String = String()
+
+  public var keyName: String = String()
 
   public var status: Int32 = 0
 
@@ -412,12 +453,22 @@ public struct Archebase_Auth_V1_ApiKey: Sendable {
   /// Clears the value of `lastUsedAt`. Subsequent reads from it will return its default value.
   public mutating func clearLastUsedAt() {self._lastUsedAt = nil}
 
+  public var principal: Archebase_Auth_V1_ApiKeyPrincipal {
+    get {_principal ?? Archebase_Auth_V1_ApiKeyPrincipal()}
+    set {_principal = newValue}
+  }
+  /// Returns true if `principal` has been explicitly set.
+  public var hasPrincipal: Bool {self._principal != nil}
+  /// Clears the value of `principal`. Subsequent reads from it will return its default value.
+  public mutating func clearPrincipal() {self._principal = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
   fileprivate var _expiredAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
   fileprivate var _lastUsedAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
+  fileprivate var _principal: Archebase_Auth_V1_ApiKeyPrincipal? = nil
 }
 
 public struct Archebase_Auth_V1_CreateSiteRequest: Sendable {
@@ -652,16 +703,14 @@ public struct Archebase_Auth_V1_DeleteSiteResponse: Sendable {
   public init() {}
 }
 
-public struct Archebase_Auth_V1_CreateApiKeyRequest: Sendable {
+public struct Archebase_Auth_V1_CreateSiteApiKeyRequest: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
   public var siteID: Int64 = 0
 
-  public var keyID: String = String()
-
-  public var keyPrefix: String = String()
+  public var keyName: String = String()
 
   public var status: Int32 = 0
 
@@ -674,7 +723,55 @@ public struct Archebase_Auth_V1_CreateApiKeyRequest: Sendable {
   /// Clears the value of `expiredAt`. Subsequent reads from it will return its default value.
   public mutating func clearExpiredAt() {self._expiredAt = nil}
 
-  public var rotateIfExists: Bool = false
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _expiredAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
+}
+
+public struct Archebase_Auth_V1_CreateSiteApiKeyResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var apiKey: Archebase_Auth_V1_ApiKey {
+    get {_apiKey ?? Archebase_Auth_V1_ApiKey()}
+    set {_apiKey = newValue}
+  }
+  /// Returns true if `apiKey` has been explicitly set.
+  public var hasApiKey: Bool {self._apiKey != nil}
+  /// Clears the value of `apiKey`. Subsequent reads from it will return its default value.
+  public mutating func clearApiKey() {self._apiKey = nil}
+
+  public var credential: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _apiKey: Archebase_Auth_V1_ApiKey? = nil
+}
+
+public struct Archebase_Auth_V1_CreateOrRotateDeviceApiKeyRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var deviceID: String = String()
+
+  public var keyName: String = String()
+
+  public var status: Int32 = 0
+
+  public var expiredAt: SwiftProtobuf.Google_Protobuf_Timestamp {
+    get {_expiredAt ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
+    set {_expiredAt = newValue}
+  }
+  /// Returns true if `expiredAt` has been explicitly set.
+  public var hasExpiredAt: Bool {self._expiredAt != nil}
+  /// Clears the value of `expiredAt`. Subsequent reads from it will return its default value.
+  public mutating func clearExpiredAt() {self._expiredAt = nil}
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -683,16 +780,27 @@ public struct Archebase_Auth_V1_CreateApiKeyRequest: Sendable {
   fileprivate var _expiredAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
 }
 
-public struct Archebase_Auth_V1_CreateApiKeyResponse: Sendable {
+public struct Archebase_Auth_V1_CreateOrRotateDeviceApiKeyResponse: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  public var credentialBase64: String = String()
+  public var apiKey: Archebase_Auth_V1_ApiKey {
+    get {_apiKey ?? Archebase_Auth_V1_ApiKey()}
+    set {_apiKey = newValue}
+  }
+  /// Returns true if `apiKey` has been explicitly set.
+  public var hasApiKey: Bool {self._apiKey != nil}
+  /// Clears the value of `apiKey`. Subsequent reads from it will return its default value.
+  public mutating func clearApiKey() {self._apiKey = nil}
+
+  public var credential: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
+
+  fileprivate var _apiKey: Archebase_Auth_V1_ApiKey? = nil
 }
 
 public struct Archebase_Auth_V1_GetApiKeyRequest: Sendable {
@@ -700,9 +808,7 @@ public struct Archebase_Auth_V1_GetApiKeyRequest: Sendable {
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  public var siteID: Int64 = 0
-
-  public var keyID: String = String()
+  public var apiKeyID: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -735,7 +841,12 @@ public struct Archebase_Auth_V1_ListApiKeysRequest: Sendable {
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// Use 0 to list API keys across all sites.
   public var siteID: Int64 = 0
+
+  public var ownerKind: Archebase_Auth_V1_ApiKeyOwnerKind = .unspecified
+
+  public var deviceID: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -759,9 +870,7 @@ public struct Archebase_Auth_V1_EnableApiKeyRequest: Sendable {
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  public var siteID: Int64 = 0
-
-  public var keyID: String = String()
+  public var apiKeyID: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -794,9 +903,7 @@ public struct Archebase_Auth_V1_DisableApiKeyRequest: Sendable {
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  public var siteID: Int64 = 0
-
-  public var keyID: String = String()
+  public var apiKeyID: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -829,27 +936,16 @@ public struct Archebase_Auth_V1_UpdateApiKeyRequest: Sendable {
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  public var siteID: Int64 = 0
+  public var apiKeyID: String = String()
 
-  public var keyID: String = String()
-
-  public var keyPrefix: String {
-    get {_keyPrefix ?? String()}
-    set {_keyPrefix = newValue}
+  public var keyName: String {
+    get {_keyName ?? String()}
+    set {_keyName = newValue}
   }
-  /// Returns true if `keyPrefix` has been explicitly set.
-  public var hasKeyPrefix: Bool {self._keyPrefix != nil}
-  /// Clears the value of `keyPrefix`. Subsequent reads from it will return its default value.
-  public mutating func clearKeyPrefix() {self._keyPrefix = nil}
-
-  public var siteSecret: String {
-    get {_siteSecret ?? String()}
-    set {_siteSecret = newValue}
-  }
-  /// Returns true if `siteSecret` has been explicitly set.
-  public var hasSiteSecret: Bool {self._siteSecret != nil}
-  /// Clears the value of `siteSecret`. Subsequent reads from it will return its default value.
-  public mutating func clearSiteSecret() {self._siteSecret = nil}
+  /// Returns true if `keyName` has been explicitly set.
+  public var hasKeyName: Bool {self._keyName != nil}
+  /// Clears the value of `keyName`. Subsequent reads from it will return its default value.
+  public mutating func clearKeyName() {self._keyName = nil}
 
   public var status: Int32 {
     get {_status ?? 0}
@@ -875,8 +971,7 @@ public struct Archebase_Auth_V1_UpdateApiKeyRequest: Sendable {
 
   public init() {}
 
-  fileprivate var _keyPrefix: String? = nil
-  fileprivate var _siteSecret: String? = nil
+  fileprivate var _keyName: String? = nil
   fileprivate var _status: Int32? = nil
   fileprivate var _expiredAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
 }
@@ -902,14 +997,47 @@ public struct Archebase_Auth_V1_UpdateApiKeyResponse: Sendable {
   fileprivate var _apiKey: Archebase_Auth_V1_ApiKey? = nil
 }
 
+public struct Archebase_Auth_V1_RotateApiKeySecretRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var apiKeyID: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public struct Archebase_Auth_V1_RotateApiKeySecretResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var apiKey: Archebase_Auth_V1_ApiKey {
+    get {_apiKey ?? Archebase_Auth_V1_ApiKey()}
+    set {_apiKey = newValue}
+  }
+  /// Returns true if `apiKey` has been explicitly set.
+  public var hasApiKey: Bool {self._apiKey != nil}
+  /// Clears the value of `apiKey`. Subsequent reads from it will return its default value.
+  public mutating func clearApiKey() {self._apiKey = nil}
+
+  public var credential: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _apiKey: Archebase_Auth_V1_ApiKey? = nil
+}
+
 public struct Archebase_Auth_V1_DeleteApiKeyRequest: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  public var siteID: Int64 = 0
-
-  public var keyID: String = String()
+  public var apiKeyID: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -944,35 +1072,34 @@ public struct Archebase_Auth_V1_CreateOrganizationRequest: Sendable {
   public init() {}
 }
 
-public struct Archebase_Auth_V1_CreateOrganizationResponse: Sendable {
+public struct Archebase_Auth_V1_CreateOrganizationResponse: @unchecked Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
   public var organization: Archebase_Auth_V1_Organization {
-    get {_organization ?? Archebase_Auth_V1_Organization()}
-    set {_organization = newValue}
+    get {_storage._organization ?? Archebase_Auth_V1_Organization()}
+    set {_uniqueStorage()._organization = newValue}
   }
   /// Returns true if `organization` has been explicitly set.
-  public var hasOrganization: Bool {self._organization != nil}
+  public var hasOrganization: Bool {_storage._organization != nil}
   /// Clears the value of `organization`. Subsequent reads from it will return its default value.
-  public mutating func clearOrganization() {self._organization = nil}
+  public mutating func clearOrganization() {_uniqueStorage()._organization = nil}
 
   public var bootstrapAdmin: Archebase_Auth_V1_User {
-    get {_bootstrapAdmin ?? Archebase_Auth_V1_User()}
-    set {_bootstrapAdmin = newValue}
+    get {_storage._bootstrapAdmin ?? Archebase_Auth_V1_User()}
+    set {_uniqueStorage()._bootstrapAdmin = newValue}
   }
   /// Returns true if `bootstrapAdmin` has been explicitly set.
-  public var hasBootstrapAdmin: Bool {self._bootstrapAdmin != nil}
+  public var hasBootstrapAdmin: Bool {_storage._bootstrapAdmin != nil}
   /// Clears the value of `bootstrapAdmin`. Subsequent reads from it will return its default value.
-  public mutating func clearBootstrapAdmin() {self._bootstrapAdmin = nil}
+  public mutating func clearBootstrapAdmin() {_uniqueStorage()._bootstrapAdmin = nil}
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
-  fileprivate var _organization: Archebase_Auth_V1_Organization? = nil
-  fileprivate var _bootstrapAdmin: Archebase_Auth_V1_User? = nil
+  fileprivate var _storage = _StorageClass.defaultInstance
 }
 
 public struct Archebase_Auth_V1_GetOrganizationRequest: Sendable {
@@ -1105,7 +1232,14 @@ public struct Archebase_Auth_V1_CreateUserRequest: Sendable {
 
   public var password: String = String()
 
-  public var role: Archebase_Auth_V1_UserRole = .unspecified
+  /// Cedar role. Required and non-empty for HUMAN users;
+  /// SERVICE_ACCOUNT principals MUST leave this empty (the PIP
+  /// injects `system_service_account` at runtime). Server rejects
+  /// unknown role names with `META_ROLE_UNKNOWN`, and refuses the
+  /// call if the role is not present in `roles`. Tag 4 is fresh
+  /// post-rename (was `business_role`); legacy `role` (tag 3,
+  /// admin bit) stays reserved.
+  public var role: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -1204,8 +1338,13 @@ public struct Archebase_Auth_V1_UpdateUserRequest: Sendable {
   /// Clears the value of `password`. Subsequent reads from it will return its default value.
   public mutating func clearPassword() {self._password = nil}
 
-  public var role: Archebase_Auth_V1_UserRole {
-    get {_role ?? .unspecified}
+  /// Optional: change the Cedar role. Server rejects the update
+  /// if `role` is not registered, or if `min_required_holders`
+  /// would be breached by demoting the last holder of a critical
+  /// role. Tag 4 is fresh post-rename (was `business_role`);
+  /// legacy `role` (tag 3, admin bit) stays reserved.
+  public var role: String {
+    get {_role ?? String()}
     set {_role = newValue}
   }
   /// Returns true if `role` has been explicitly set.
@@ -1218,7 +1357,7 @@ public struct Archebase_Auth_V1_UpdateUserRequest: Sendable {
   public init() {}
 
   fileprivate var _password: String? = nil
-  fileprivate var _role: Archebase_Auth_V1_UserRole? = nil
+  fileprivate var _role: String? = nil
 }
 
 public struct Archebase_Auth_V1_UpdateUserResponse: Sendable {
@@ -1268,8 +1407,8 @@ public struct Archebase_Auth_V1_DeleteUserResponse: Sendable {
 
 fileprivate let _protobuf_package = "archebase.auth.v1"
 
-extension Archebase_Auth_V1_UserRole: SwiftProtobuf._ProtoNameProviding {
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0USER_ROLE_UNSPECIFIED\0\u{1}USER_ROLE_ADMINISTRATORS\0\u{1}USER_ROLE_NORMAL_USERS\0")
+extension Archebase_Auth_V1_ApiKeyOwnerKind: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0API_KEY_OWNER_KIND_UNSPECIFIED\0\u{1}API_KEY_OWNER_KIND_SITE\0\u{1}API_KEY_OWNER_KIND_DEVICE\0")
 }
 
 extension Archebase_Auth_V1_AuthErrorCode: SwiftProtobuf._ProtoNameProviding {
@@ -1278,7 +1417,7 @@ extension Archebase_Auth_V1_AuthErrorCode: SwiftProtobuf._ProtoNameProviding {
 
 extension Archebase_Auth_V1_ExchangeCredentialRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ExchangeCredentialRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}credential_base64\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}credential\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1286,21 +1425,21 @@ extension Archebase_Auth_V1_ExchangeCredentialRequest: SwiftProtobuf.Message, Sw
       // allocates stack space for every case branch when no optimizations are
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
-      case 1: try { try decoder.decodeSingularStringField(value: &self.credentialBase64) }()
+      case 1: try { try decoder.decodeSingularStringField(value: &self.credential) }()
       default: break
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    if !self.credentialBase64.isEmpty {
-      try visitor.visitSingularStringField(value: self.credentialBase64, fieldNumber: 1)
+    if !self.credential.isEmpty {
+      try visitor.visitSingularStringField(value: self.credential, fieldNumber: 1)
     }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Archebase_Auth_V1_ExchangeCredentialRequest, rhs: Archebase_Auth_V1_ExchangeCredentialRequest) -> Bool {
-    if lhs.credentialBase64 != rhs.credentialBase64 {return false}
+    if lhs.credential != rhs.credential {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -1308,7 +1447,7 @@ extension Archebase_Auth_V1_ExchangeCredentialRequest: SwiftProtobuf.Message, Sw
 
 extension Archebase_Auth_V1_ExchangeCredentialResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ExchangeCredentialResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}access_token\0\u{3}expires_at_unix\0\u{3}token_type\0\u{3}key_id\0\u{3}key_prefix\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}access_token\0\u{3}expires_at_unix\0\u{3}token_type\0\u{1}principal\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1319,14 +1458,17 @@ extension Archebase_Auth_V1_ExchangeCredentialResponse: SwiftProtobuf.Message, S
       case 1: try { try decoder.decodeSingularStringField(value: &self.accessToken) }()
       case 2: try { try decoder.decodeSingularInt64Field(value: &self.expiresAtUnix) }()
       case 3: try { try decoder.decodeSingularStringField(value: &self.tokenType) }()
-      case 4: try { try decoder.decodeSingularStringField(value: &self.keyID) }()
-      case 5: try { try decoder.decodeSingularStringField(value: &self.keyPrefix) }()
+      case 4: try { try decoder.decodeSingularMessageField(value: &self._principal) }()
       default: break
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
     if !self.accessToken.isEmpty {
       try visitor.visitSingularStringField(value: self.accessToken, fieldNumber: 1)
     }
@@ -1336,12 +1478,9 @@ extension Archebase_Auth_V1_ExchangeCredentialResponse: SwiftProtobuf.Message, S
     if !self.tokenType.isEmpty {
       try visitor.visitSingularStringField(value: self.tokenType, fieldNumber: 3)
     }
-    if !self.keyID.isEmpty {
-      try visitor.visitSingularStringField(value: self.keyID, fieldNumber: 4)
-    }
-    if !self.keyPrefix.isEmpty {
-      try visitor.visitSingularStringField(value: self.keyPrefix, fieldNumber: 5)
-    }
+    try { if let v = self._principal {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -1349,8 +1488,7 @@ extension Archebase_Auth_V1_ExchangeCredentialResponse: SwiftProtobuf.Message, S
     if lhs.accessToken != rhs.accessToken {return false}
     if lhs.expiresAtUnix != rhs.expiresAtUnix {return false}
     if lhs.tokenType != rhs.tokenType {return false}
-    if lhs.keyID != rhs.keyID {return false}
-    if lhs.keyPrefix != rhs.keyPrefix {return false}
+    if lhs._principal != rhs._principal {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -1626,7 +1764,7 @@ extension Archebase_Auth_V1_ExchangeSystemCredentialResponse: SwiftProtobuf.Mess
 
 extension Archebase_Auth_V1_User: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".User"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}organization\0\u{3}user_name\0\u{1}role\0\u{3}last_login_at\0\u{3}created_at\0\u{3}updated_at\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}organization\0\u{3}user_name\0\u{4}\u{2}last_login_at\0\u{3}created_at\0\u{3}updated_at\0\u{1}role\0\u{3}organization_id\0\u{3}user_id\0\u{b}user_class\0\u{c}\u{3}\u{1}")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1636,10 +1774,12 @@ extension Archebase_Auth_V1_User: SwiftProtobuf.Message, SwiftProtobuf._MessageI
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularStringField(value: &self.organization) }()
       case 2: try { try decoder.decodeSingularStringField(value: &self.userName) }()
-      case 3: try { try decoder.decodeSingularEnumField(value: &self.role) }()
       case 4: try { try decoder.decodeSingularMessageField(value: &self._lastLoginAt) }()
       case 5: try { try decoder.decodeSingularMessageField(value: &self._createdAt) }()
       case 6: try { try decoder.decodeSingularMessageField(value: &self._updatedAt) }()
+      case 7: try { try decoder.decodeSingularStringField(value: &self.role) }()
+      case 8: try { try decoder.decodeSingularInt64Field(value: &self.organizationID) }()
+      case 9: try { try decoder.decodeSingularInt64Field(value: &self.userID) }()
       default: break
       }
     }
@@ -1656,9 +1796,6 @@ extension Archebase_Auth_V1_User: SwiftProtobuf.Message, SwiftProtobuf._MessageI
     if !self.userName.isEmpty {
       try visitor.visitSingularStringField(value: self.userName, fieldNumber: 2)
     }
-    if self.role != .unspecified {
-      try visitor.visitSingularEnumField(value: self.role, fieldNumber: 3)
-    }
     try { if let v = self._lastLoginAt {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
     } }()
@@ -1668,16 +1805,27 @@ extension Archebase_Auth_V1_User: SwiftProtobuf.Message, SwiftProtobuf._MessageI
     try { if let v = self._updatedAt {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 6)
     } }()
+    if !self.role.isEmpty {
+      try visitor.visitSingularStringField(value: self.role, fieldNumber: 7)
+    }
+    if self.organizationID != 0 {
+      try visitor.visitSingularInt64Field(value: self.organizationID, fieldNumber: 8)
+    }
+    if self.userID != 0 {
+      try visitor.visitSingularInt64Field(value: self.userID, fieldNumber: 9)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Archebase_Auth_V1_User, rhs: Archebase_Auth_V1_User) -> Bool {
     if lhs.organization != rhs.organization {return false}
     if lhs.userName != rhs.userName {return false}
-    if lhs.role != rhs.role {return false}
     if lhs._lastLoginAt != rhs._lastLoginAt {return false}
     if lhs._createdAt != rhs._createdAt {return false}
     if lhs._updatedAt != rhs._updatedAt {return false}
+    if lhs.role != rhs.role {return false}
+    if lhs.organizationID != rhs.organizationID {return false}
+    if lhs.userID != rhs.userID {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -1786,9 +1934,9 @@ extension Archebase_Auth_V1_Site: SwiftProtobuf.Message, SwiftProtobuf._MessageI
   }
 }
 
-extension Archebase_Auth_V1_ApiKey: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
-  public static let protoMessageName: String = _protobuf_package + ".ApiKey"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}site_id\0\u{3}key_id\0\u{3}key_prefix\0\u{1}status\0\u{3}expired_at\0\u{3}last_used_at\0")
+extension Archebase_Auth_V1_ApiKeyPrincipal: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ApiKeyPrincipal"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}site_id\0\u{3}api_key_id\0\u{3}key_name\0\u{3}owner_kind\0\u{3}device_id\0\u{3}suite_id\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1797,11 +1945,66 @@ extension Archebase_Auth_V1_ApiKey: SwiftProtobuf.Message, SwiftProtobuf._Messag
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularInt64Field(value: &self.siteID) }()
-      case 2: try { try decoder.decodeSingularStringField(value: &self.keyID) }()
-      case 3: try { try decoder.decodeSingularStringField(value: &self.keyPrefix) }()
-      case 4: try { try decoder.decodeSingularInt32Field(value: &self.status) }()
-      case 5: try { try decoder.decodeSingularMessageField(value: &self._expiredAt) }()
-      case 6: try { try decoder.decodeSingularMessageField(value: &self._lastUsedAt) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.apiKeyID) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.keyName) }()
+      case 4: try { try decoder.decodeSingularEnumField(value: &self.ownerKind) }()
+      case 5: try { try decoder.decodeSingularStringField(value: &self.deviceID) }()
+      case 6: try { try decoder.decodeSingularStringField(value: &self.suiteID) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.siteID != 0 {
+      try visitor.visitSingularInt64Field(value: self.siteID, fieldNumber: 1)
+    }
+    if !self.apiKeyID.isEmpty {
+      try visitor.visitSingularStringField(value: self.apiKeyID, fieldNumber: 2)
+    }
+    if !self.keyName.isEmpty {
+      try visitor.visitSingularStringField(value: self.keyName, fieldNumber: 3)
+    }
+    if self.ownerKind != .unspecified {
+      try visitor.visitSingularEnumField(value: self.ownerKind, fieldNumber: 4)
+    }
+    if !self.deviceID.isEmpty {
+      try visitor.visitSingularStringField(value: self.deviceID, fieldNumber: 5)
+    }
+    if !self.suiteID.isEmpty {
+      try visitor.visitSingularStringField(value: self.suiteID, fieldNumber: 6)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Archebase_Auth_V1_ApiKeyPrincipal, rhs: Archebase_Auth_V1_ApiKeyPrincipal) -> Bool {
+    if lhs.siteID != rhs.siteID {return false}
+    if lhs.apiKeyID != rhs.apiKeyID {return false}
+    if lhs.keyName != rhs.keyName {return false}
+    if lhs.ownerKind != rhs.ownerKind {return false}
+    if lhs.deviceID != rhs.deviceID {return false}
+    if lhs.suiteID != rhs.suiteID {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Archebase_Auth_V1_ApiKey: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ApiKey"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}api_key_id\0\u{3}key_name\0\u{1}status\0\u{3}expired_at\0\u{3}last_used_at\0\u{1}principal\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.apiKeyID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.keyName) }()
+      case 3: try { try decoder.decodeSingularInt32Field(value: &self.status) }()
+      case 4: try { try decoder.decodeSingularMessageField(value: &self._expiredAt) }()
+      case 5: try { try decoder.decodeSingularMessageField(value: &self._lastUsedAt) }()
+      case 6: try { try decoder.decodeSingularMessageField(value: &self._principal) }()
       default: break
       }
     }
@@ -1812,34 +2015,34 @@ extension Archebase_Auth_V1_ApiKey: SwiftProtobuf.Message, SwiftProtobuf._Messag
     // allocates stack space for every if/case branch local when no optimizations
     // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
     // https://github.com/apple/swift-protobuf/issues/1182
-    if self.siteID != 0 {
-      try visitor.visitSingularInt64Field(value: self.siteID, fieldNumber: 1)
+    if !self.apiKeyID.isEmpty {
+      try visitor.visitSingularStringField(value: self.apiKeyID, fieldNumber: 1)
     }
-    if !self.keyID.isEmpty {
-      try visitor.visitSingularStringField(value: self.keyID, fieldNumber: 2)
-    }
-    if !self.keyPrefix.isEmpty {
-      try visitor.visitSingularStringField(value: self.keyPrefix, fieldNumber: 3)
+    if !self.keyName.isEmpty {
+      try visitor.visitSingularStringField(value: self.keyName, fieldNumber: 2)
     }
     if self.status != 0 {
-      try visitor.visitSingularInt32Field(value: self.status, fieldNumber: 4)
+      try visitor.visitSingularInt32Field(value: self.status, fieldNumber: 3)
     }
     try { if let v = self._expiredAt {
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
     } }()
     try { if let v = self._lastUsedAt {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
+    } }()
+    try { if let v = self._principal {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 6)
     } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Archebase_Auth_V1_ApiKey, rhs: Archebase_Auth_V1_ApiKey) -> Bool {
-    if lhs.siteID != rhs.siteID {return false}
-    if lhs.keyID != rhs.keyID {return false}
-    if lhs.keyPrefix != rhs.keyPrefix {return false}
+    if lhs.apiKeyID != rhs.apiKeyID {return false}
+    if lhs.keyName != rhs.keyName {return false}
     if lhs.status != rhs.status {return false}
     if lhs._expiredAt != rhs._expiredAt {return false}
     if lhs._lastUsedAt != rhs._lastUsedAt {return false}
+    if lhs._principal != rhs._principal {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -2282,9 +2485,9 @@ extension Archebase_Auth_V1_DeleteSiteResponse: SwiftProtobuf.Message, SwiftProt
   }
 }
 
-extension Archebase_Auth_V1_CreateApiKeyRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
-  public static let protoMessageName: String = _protobuf_package + ".CreateApiKeyRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}site_id\0\u{3}key_id\0\u{3}key_prefix\0\u{1}status\0\u{3}expired_at\0\u{3}rotate_if_exists\0")
+extension Archebase_Auth_V1_CreateSiteApiKeyRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CreateSiteApiKeyRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}site_id\0\u{3}key_name\0\u{1}status\0\u{3}expired_at\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2293,11 +2496,9 @@ extension Archebase_Auth_V1_CreateApiKeyRequest: SwiftProtobuf.Message, SwiftPro
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularInt64Field(value: &self.siteID) }()
-      case 2: try { try decoder.decodeSingularStringField(value: &self.keyID) }()
-      case 3: try { try decoder.decodeSingularStringField(value: &self.keyPrefix) }()
-      case 4: try { try decoder.decodeSingularInt32Field(value: &self.status) }()
-      case 5: try { try decoder.decodeSingularMessageField(value: &self._expiredAt) }()
-      case 6: try { try decoder.decodeSingularBoolField(value: &self.rotateIfExists) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.keyName) }()
+      case 3: try { try decoder.decodeSingularInt32Field(value: &self.status) }()
+      case 4: try { try decoder.decodeSingularMessageField(value: &self._expiredAt) }()
       default: break
       }
     }
@@ -2311,39 +2512,31 @@ extension Archebase_Auth_V1_CreateApiKeyRequest: SwiftProtobuf.Message, SwiftPro
     if self.siteID != 0 {
       try visitor.visitSingularInt64Field(value: self.siteID, fieldNumber: 1)
     }
-    if !self.keyID.isEmpty {
-      try visitor.visitSingularStringField(value: self.keyID, fieldNumber: 2)
-    }
-    if !self.keyPrefix.isEmpty {
-      try visitor.visitSingularStringField(value: self.keyPrefix, fieldNumber: 3)
+    if !self.keyName.isEmpty {
+      try visitor.visitSingularStringField(value: self.keyName, fieldNumber: 2)
     }
     if self.status != 0 {
-      try visitor.visitSingularInt32Field(value: self.status, fieldNumber: 4)
+      try visitor.visitSingularInt32Field(value: self.status, fieldNumber: 3)
     }
     try { if let v = self._expiredAt {
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
     } }()
-    if self.rotateIfExists != false {
-      try visitor.visitSingularBoolField(value: self.rotateIfExists, fieldNumber: 6)
-    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
-  public static func ==(lhs: Archebase_Auth_V1_CreateApiKeyRequest, rhs: Archebase_Auth_V1_CreateApiKeyRequest) -> Bool {
+  public static func ==(lhs: Archebase_Auth_V1_CreateSiteApiKeyRequest, rhs: Archebase_Auth_V1_CreateSiteApiKeyRequest) -> Bool {
     if lhs.siteID != rhs.siteID {return false}
-    if lhs.keyID != rhs.keyID {return false}
-    if lhs.keyPrefix != rhs.keyPrefix {return false}
+    if lhs.keyName != rhs.keyName {return false}
     if lhs.status != rhs.status {return false}
     if lhs._expiredAt != rhs._expiredAt {return false}
-    if lhs.rotateIfExists != rhs.rotateIfExists {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
 }
 
-extension Archebase_Auth_V1_CreateApiKeyResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
-  public static let protoMessageName: String = _protobuf_package + ".CreateApiKeyResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}credential_base64\0")
+extension Archebase_Auth_V1_CreateSiteApiKeyResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CreateSiteApiKeyResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}api_key\0\u{1}credential\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2351,21 +2544,118 @@ extension Archebase_Auth_V1_CreateApiKeyResponse: SwiftProtobuf.Message, SwiftPr
       // allocates stack space for every case branch when no optimizations are
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
-      case 1: try { try decoder.decodeSingularStringField(value: &self.credentialBase64) }()
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._apiKey) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.credential) }()
       default: break
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    if !self.credentialBase64.isEmpty {
-      try visitor.visitSingularStringField(value: self.credentialBase64, fieldNumber: 1)
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._apiKey {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
+    if !self.credential.isEmpty {
+      try visitor.visitSingularStringField(value: self.credential, fieldNumber: 2)
     }
     try unknownFields.traverse(visitor: &visitor)
   }
 
-  public static func ==(lhs: Archebase_Auth_V1_CreateApiKeyResponse, rhs: Archebase_Auth_V1_CreateApiKeyResponse) -> Bool {
-    if lhs.credentialBase64 != rhs.credentialBase64 {return false}
+  public static func ==(lhs: Archebase_Auth_V1_CreateSiteApiKeyResponse, rhs: Archebase_Auth_V1_CreateSiteApiKeyResponse) -> Bool {
+    if lhs._apiKey != rhs._apiKey {return false}
+    if lhs.credential != rhs.credential {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Archebase_Auth_V1_CreateOrRotateDeviceApiKeyRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CreateOrRotateDeviceApiKeyRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}device_id\0\u{3}key_name\0\u{1}status\0\u{3}expired_at\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.deviceID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.keyName) }()
+      case 3: try { try decoder.decodeSingularInt32Field(value: &self.status) }()
+      case 4: try { try decoder.decodeSingularMessageField(value: &self._expiredAt) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.deviceID.isEmpty {
+      try visitor.visitSingularStringField(value: self.deviceID, fieldNumber: 1)
+    }
+    if !self.keyName.isEmpty {
+      try visitor.visitSingularStringField(value: self.keyName, fieldNumber: 2)
+    }
+    if self.status != 0 {
+      try visitor.visitSingularInt32Field(value: self.status, fieldNumber: 3)
+    }
+    try { if let v = self._expiredAt {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Archebase_Auth_V1_CreateOrRotateDeviceApiKeyRequest, rhs: Archebase_Auth_V1_CreateOrRotateDeviceApiKeyRequest) -> Bool {
+    if lhs.deviceID != rhs.deviceID {return false}
+    if lhs.keyName != rhs.keyName {return false}
+    if lhs.status != rhs.status {return false}
+    if lhs._expiredAt != rhs._expiredAt {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Archebase_Auth_V1_CreateOrRotateDeviceApiKeyResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CreateOrRotateDeviceApiKeyResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}api_key\0\u{1}credential\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._apiKey) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.credential) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._apiKey {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
+    if !self.credential.isEmpty {
+      try visitor.visitSingularStringField(value: self.credential, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Archebase_Auth_V1_CreateOrRotateDeviceApiKeyResponse, rhs: Archebase_Auth_V1_CreateOrRotateDeviceApiKeyResponse) -> Bool {
+    if lhs._apiKey != rhs._apiKey {return false}
+    if lhs.credential != rhs.credential {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -2373,7 +2663,7 @@ extension Archebase_Auth_V1_CreateApiKeyResponse: SwiftProtobuf.Message, SwiftPr
 
 extension Archebase_Auth_V1_GetApiKeyRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".GetApiKeyRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}site_id\0\u{3}key_id\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}api_key_id\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2381,26 +2671,21 @@ extension Archebase_Auth_V1_GetApiKeyRequest: SwiftProtobuf.Message, SwiftProtob
       // allocates stack space for every case branch when no optimizations are
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
-      case 1: try { try decoder.decodeSingularInt64Field(value: &self.siteID) }()
-      case 2: try { try decoder.decodeSingularStringField(value: &self.keyID) }()
+      case 1: try { try decoder.decodeSingularStringField(value: &self.apiKeyID) }()
       default: break
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    if self.siteID != 0 {
-      try visitor.visitSingularInt64Field(value: self.siteID, fieldNumber: 1)
-    }
-    if !self.keyID.isEmpty {
-      try visitor.visitSingularStringField(value: self.keyID, fieldNumber: 2)
+    if !self.apiKeyID.isEmpty {
+      try visitor.visitSingularStringField(value: self.apiKeyID, fieldNumber: 1)
     }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Archebase_Auth_V1_GetApiKeyRequest, rhs: Archebase_Auth_V1_GetApiKeyRequest) -> Bool {
-    if lhs.siteID != rhs.siteID {return false}
-    if lhs.keyID != rhs.keyID {return false}
+    if lhs.apiKeyID != rhs.apiKeyID {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -2442,7 +2727,7 @@ extension Archebase_Auth_V1_GetApiKeyResponse: SwiftProtobuf.Message, SwiftProto
 
 extension Archebase_Auth_V1_ListApiKeysRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ListApiKeysRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}site_id\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}site_id\0\u{3}owner_kind\0\u{3}device_id\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2451,6 +2736,8 @@ extension Archebase_Auth_V1_ListApiKeysRequest: SwiftProtobuf.Message, SwiftProt
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularInt64Field(value: &self.siteID) }()
+      case 2: try { try decoder.decodeSingularEnumField(value: &self.ownerKind) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.deviceID) }()
       default: break
       }
     }
@@ -2460,11 +2747,19 @@ extension Archebase_Auth_V1_ListApiKeysRequest: SwiftProtobuf.Message, SwiftProt
     if self.siteID != 0 {
       try visitor.visitSingularInt64Field(value: self.siteID, fieldNumber: 1)
     }
+    if self.ownerKind != .unspecified {
+      try visitor.visitSingularEnumField(value: self.ownerKind, fieldNumber: 2)
+    }
+    if !self.deviceID.isEmpty {
+      try visitor.visitSingularStringField(value: self.deviceID, fieldNumber: 3)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Archebase_Auth_V1_ListApiKeysRequest, rhs: Archebase_Auth_V1_ListApiKeysRequest) -> Bool {
     if lhs.siteID != rhs.siteID {return false}
+    if lhs.ownerKind != rhs.ownerKind {return false}
+    if lhs.deviceID != rhs.deviceID {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -2502,7 +2797,7 @@ extension Archebase_Auth_V1_ListApiKeysResponse: SwiftProtobuf.Message, SwiftPro
 
 extension Archebase_Auth_V1_EnableApiKeyRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".EnableApiKeyRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}site_id\0\u{3}key_id\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}api_key_id\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2510,26 +2805,21 @@ extension Archebase_Auth_V1_EnableApiKeyRequest: SwiftProtobuf.Message, SwiftPro
       // allocates stack space for every case branch when no optimizations are
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
-      case 1: try { try decoder.decodeSingularInt64Field(value: &self.siteID) }()
-      case 2: try { try decoder.decodeSingularStringField(value: &self.keyID) }()
+      case 1: try { try decoder.decodeSingularStringField(value: &self.apiKeyID) }()
       default: break
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    if self.siteID != 0 {
-      try visitor.visitSingularInt64Field(value: self.siteID, fieldNumber: 1)
-    }
-    if !self.keyID.isEmpty {
-      try visitor.visitSingularStringField(value: self.keyID, fieldNumber: 2)
+    if !self.apiKeyID.isEmpty {
+      try visitor.visitSingularStringField(value: self.apiKeyID, fieldNumber: 1)
     }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Archebase_Auth_V1_EnableApiKeyRequest, rhs: Archebase_Auth_V1_EnableApiKeyRequest) -> Bool {
-    if lhs.siteID != rhs.siteID {return false}
-    if lhs.keyID != rhs.keyID {return false}
+    if lhs.apiKeyID != rhs.apiKeyID {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -2571,7 +2861,7 @@ extension Archebase_Auth_V1_EnableApiKeyResponse: SwiftProtobuf.Message, SwiftPr
 
 extension Archebase_Auth_V1_DisableApiKeyRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".DisableApiKeyRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}site_id\0\u{3}key_id\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}api_key_id\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2579,26 +2869,21 @@ extension Archebase_Auth_V1_DisableApiKeyRequest: SwiftProtobuf.Message, SwiftPr
       // allocates stack space for every case branch when no optimizations are
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
-      case 1: try { try decoder.decodeSingularInt64Field(value: &self.siteID) }()
-      case 2: try { try decoder.decodeSingularStringField(value: &self.keyID) }()
+      case 1: try { try decoder.decodeSingularStringField(value: &self.apiKeyID) }()
       default: break
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    if self.siteID != 0 {
-      try visitor.visitSingularInt64Field(value: self.siteID, fieldNumber: 1)
-    }
-    if !self.keyID.isEmpty {
-      try visitor.visitSingularStringField(value: self.keyID, fieldNumber: 2)
+    if !self.apiKeyID.isEmpty {
+      try visitor.visitSingularStringField(value: self.apiKeyID, fieldNumber: 1)
     }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Archebase_Auth_V1_DisableApiKeyRequest, rhs: Archebase_Auth_V1_DisableApiKeyRequest) -> Bool {
-    if lhs.siteID != rhs.siteID {return false}
-    if lhs.keyID != rhs.keyID {return false}
+    if lhs.apiKeyID != rhs.apiKeyID {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -2640,7 +2925,7 @@ extension Archebase_Auth_V1_DisableApiKeyResponse: SwiftProtobuf.Message, SwiftP
 
 extension Archebase_Auth_V1_UpdateApiKeyRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".UpdateApiKeyRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}site_id\0\u{3}key_id\0\u{3}key_prefix\0\u{3}site_secret\0\u{1}status\0\u{3}expired_at\0\u{3}clear_expired_at\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}api_key_id\0\u{3}key_name\0\u{1}status\0\u{3}expired_at\0\u{3}clear_expired_at\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2648,13 +2933,11 @@ extension Archebase_Auth_V1_UpdateApiKeyRequest: SwiftProtobuf.Message, SwiftPro
       // allocates stack space for every case branch when no optimizations are
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
-      case 1: try { try decoder.decodeSingularInt64Field(value: &self.siteID) }()
-      case 2: try { try decoder.decodeSingularStringField(value: &self.keyID) }()
-      case 3: try { try decoder.decodeSingularStringField(value: &self._keyPrefix) }()
-      case 4: try { try decoder.decodeSingularStringField(value: &self._siteSecret) }()
-      case 5: try { try decoder.decodeSingularInt32Field(value: &self._status) }()
-      case 6: try { try decoder.decodeSingularMessageField(value: &self._expiredAt) }()
-      case 7: try { try decoder.decodeSingularBoolField(value: &self.clearExpiredAt_p) }()
+      case 1: try { try decoder.decodeSingularStringField(value: &self.apiKeyID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self._keyName) }()
+      case 3: try { try decoder.decodeSingularInt32Field(value: &self._status) }()
+      case 4: try { try decoder.decodeSingularMessageField(value: &self._expiredAt) }()
+      case 5: try { try decoder.decodeSingularBoolField(value: &self.clearExpiredAt_p) }()
       default: break
       }
     }
@@ -2665,35 +2948,27 @@ extension Archebase_Auth_V1_UpdateApiKeyRequest: SwiftProtobuf.Message, SwiftPro
     // allocates stack space for every if/case branch local when no optimizations
     // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
     // https://github.com/apple/swift-protobuf/issues/1182
-    if self.siteID != 0 {
-      try visitor.visitSingularInt64Field(value: self.siteID, fieldNumber: 1)
+    if !self.apiKeyID.isEmpty {
+      try visitor.visitSingularStringField(value: self.apiKeyID, fieldNumber: 1)
     }
-    if !self.keyID.isEmpty {
-      try visitor.visitSingularStringField(value: self.keyID, fieldNumber: 2)
-    }
-    try { if let v = self._keyPrefix {
-      try visitor.visitSingularStringField(value: v, fieldNumber: 3)
-    } }()
-    try { if let v = self._siteSecret {
-      try visitor.visitSingularStringField(value: v, fieldNumber: 4)
+    try { if let v = self._keyName {
+      try visitor.visitSingularStringField(value: v, fieldNumber: 2)
     } }()
     try { if let v = self._status {
-      try visitor.visitSingularInt32Field(value: v, fieldNumber: 5)
+      try visitor.visitSingularInt32Field(value: v, fieldNumber: 3)
     } }()
     try { if let v = self._expiredAt {
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 6)
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
     } }()
     if self.clearExpiredAt_p != false {
-      try visitor.visitSingularBoolField(value: self.clearExpiredAt_p, fieldNumber: 7)
+      try visitor.visitSingularBoolField(value: self.clearExpiredAt_p, fieldNumber: 5)
     }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Archebase_Auth_V1_UpdateApiKeyRequest, rhs: Archebase_Auth_V1_UpdateApiKeyRequest) -> Bool {
-    if lhs.siteID != rhs.siteID {return false}
-    if lhs.keyID != rhs.keyID {return false}
-    if lhs._keyPrefix != rhs._keyPrefix {return false}
-    if lhs._siteSecret != rhs._siteSecret {return false}
+    if lhs.apiKeyID != rhs.apiKeyID {return false}
+    if lhs._keyName != rhs._keyName {return false}
     if lhs._status != rhs._status {return false}
     if lhs._expiredAt != rhs._expiredAt {return false}
     if lhs.clearExpiredAt_p != rhs.clearExpiredAt_p {return false}
@@ -2736,9 +3011,9 @@ extension Archebase_Auth_V1_UpdateApiKeyResponse: SwiftProtobuf.Message, SwiftPr
   }
 }
 
-extension Archebase_Auth_V1_DeleteApiKeyRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
-  public static let protoMessageName: String = _protobuf_package + ".DeleteApiKeyRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}site_id\0\u{3}key_id\0")
+extension Archebase_Auth_V1_RotateApiKeySecretRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".RotateApiKeySecretRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}api_key_id\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2746,26 +3021,90 @@ extension Archebase_Auth_V1_DeleteApiKeyRequest: SwiftProtobuf.Message, SwiftPro
       // allocates stack space for every case branch when no optimizations are
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
-      case 1: try { try decoder.decodeSingularInt64Field(value: &self.siteID) }()
-      case 2: try { try decoder.decodeSingularStringField(value: &self.keyID) }()
+      case 1: try { try decoder.decodeSingularStringField(value: &self.apiKeyID) }()
       default: break
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    if self.siteID != 0 {
-      try visitor.visitSingularInt64Field(value: self.siteID, fieldNumber: 1)
+    if !self.apiKeyID.isEmpty {
+      try visitor.visitSingularStringField(value: self.apiKeyID, fieldNumber: 1)
     }
-    if !self.keyID.isEmpty {
-      try visitor.visitSingularStringField(value: self.keyID, fieldNumber: 2)
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Archebase_Auth_V1_RotateApiKeySecretRequest, rhs: Archebase_Auth_V1_RotateApiKeySecretRequest) -> Bool {
+    if lhs.apiKeyID != rhs.apiKeyID {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Archebase_Auth_V1_RotateApiKeySecretResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".RotateApiKeySecretResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}api_key\0\u{1}credential\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._apiKey) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.credential) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._apiKey {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
+    if !self.credential.isEmpty {
+      try visitor.visitSingularStringField(value: self.credential, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Archebase_Auth_V1_RotateApiKeySecretResponse, rhs: Archebase_Auth_V1_RotateApiKeySecretResponse) -> Bool {
+    if lhs._apiKey != rhs._apiKey {return false}
+    if lhs.credential != rhs.credential {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Archebase_Auth_V1_DeleteApiKeyRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".DeleteApiKeyRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}api_key_id\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.apiKeyID) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.apiKeyID.isEmpty {
+      try visitor.visitSingularStringField(value: self.apiKeyID, fieldNumber: 1)
     }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Archebase_Auth_V1_DeleteApiKeyRequest, rhs: Archebase_Auth_V1_DeleteApiKeyRequest) -> Bool {
-    if lhs.siteID != rhs.siteID {return false}
-    if lhs.keyID != rhs.keyID {return false}
+    if lhs.apiKeyID != rhs.apiKeyID {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -2839,36 +3178,74 @@ extension Archebase_Auth_V1_CreateOrganizationResponse: SwiftProtobuf.Message, S
   public static let protoMessageName: String = _protobuf_package + ".CreateOrganizationResponse"
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}organization\0\u{3}bootstrap_admin\0")
 
+  fileprivate class _StorageClass {
+    var _organization: Archebase_Auth_V1_Organization? = nil
+    var _bootstrapAdmin: Archebase_Auth_V1_User? = nil
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _organization = source._organization
+      _bootstrapAdmin = source._bootstrapAdmin
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
+
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
-    while let fieldNumber = try decoder.nextFieldNumber() {
-      // The use of inline closures is to circumvent an issue where the compiler
-      // allocates stack space for every case branch when no optimizations are
-      // enabled. https://github.com/apple/swift-protobuf/issues/1034
-      switch fieldNumber {
-      case 1: try { try decoder.decodeSingularMessageField(value: &self._organization) }()
-      case 2: try { try decoder.decodeSingularMessageField(value: &self._bootstrapAdmin) }()
-      default: break
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularMessageField(value: &_storage._organization) }()
+        case 2: try { try decoder.decodeSingularMessageField(value: &_storage._bootstrapAdmin) }()
+        default: break
+        }
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    // The use of inline closures is to circumvent an issue where the compiler
-    // allocates stack space for every if/case branch local when no optimizations
-    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
-    // https://github.com/apple/swift-protobuf/issues/1182
-    try { if let v = self._organization {
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
-    } }()
-    try { if let v = self._bootstrapAdmin {
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
-    } }()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
+      try { if let v = _storage._organization {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+      } }()
+      try { if let v = _storage._bootstrapAdmin {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+      } }()
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Archebase_Auth_V1_CreateOrganizationResponse, rhs: Archebase_Auth_V1_CreateOrganizationResponse) -> Bool {
-    if lhs._organization != rhs._organization {return false}
-    if lhs._bootstrapAdmin != rhs._bootstrapAdmin {return false}
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._organization != rhs_storage._organization {return false}
+        if _storage._bootstrapAdmin != rhs_storage._bootstrapAdmin {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -3111,7 +3488,7 @@ extension Archebase_Auth_V1_DeleteOrganizationResponse: SwiftProtobuf.Message, S
 
 extension Archebase_Auth_V1_CreateUserRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".CreateUserRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}user_name\0\u{1}password\0\u{1}role\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}user_name\0\u{1}password\0\u{2}\u{2}role\0\u{b}user_class\0\u{c}\u{3}\u{1}")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -3121,7 +3498,7 @@ extension Archebase_Auth_V1_CreateUserRequest: SwiftProtobuf.Message, SwiftProto
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularStringField(value: &self.userName) }()
       case 2: try { try decoder.decodeSingularStringField(value: &self.password) }()
-      case 3: try { try decoder.decodeSingularEnumField(value: &self.role) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.role) }()
       default: break
       }
     }
@@ -3134,8 +3511,8 @@ extension Archebase_Auth_V1_CreateUserRequest: SwiftProtobuf.Message, SwiftProto
     if !self.password.isEmpty {
       try visitor.visitSingularStringField(value: self.password, fieldNumber: 2)
     }
-    if self.role != .unspecified {
-      try visitor.visitSingularEnumField(value: self.role, fieldNumber: 3)
+    if !self.role.isEmpty {
+      try visitor.visitSingularStringField(value: self.role, fieldNumber: 4)
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -3298,7 +3675,7 @@ extension Archebase_Auth_V1_ListUsersResponse: SwiftProtobuf.Message, SwiftProto
 
 extension Archebase_Auth_V1_UpdateUserRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".UpdateUserRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}user_name\0\u{1}password\0\u{1}role\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}user_name\0\u{1}password\0\u{2}\u{2}role\0\u{b}user_class\0\u{c}\u{3}\u{1}")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -3308,7 +3685,7 @@ extension Archebase_Auth_V1_UpdateUserRequest: SwiftProtobuf.Message, SwiftProto
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularStringField(value: &self.userName) }()
       case 2: try { try decoder.decodeSingularStringField(value: &self._password) }()
-      case 3: try { try decoder.decodeSingularEnumField(value: &self._role) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self._role) }()
       default: break
       }
     }
@@ -3326,7 +3703,7 @@ extension Archebase_Auth_V1_UpdateUserRequest: SwiftProtobuf.Message, SwiftProto
       try visitor.visitSingularStringField(value: v, fieldNumber: 2)
     } }()
     try { if let v = self._role {
-      try visitor.visitSingularEnumField(value: v, fieldNumber: 3)
+      try visitor.visitSingularStringField(value: v, fieldNumber: 4)
     } }()
     try unknownFields.traverse(visitor: &visitor)
   }

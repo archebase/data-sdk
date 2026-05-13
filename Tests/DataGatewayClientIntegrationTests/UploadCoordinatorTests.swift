@@ -1910,6 +1910,72 @@ import Testing
     #expect(completedState?.restartCount == 1)
 }
 
+@Test func resumeUploadRestartsWhenRecoveryLookupReportsUploadNotFound() async throws {
+    let managedURL = URL(fileURLWithPath: "/staging/recovery-missing.bin")
+    let payload = Data(repeating: 0x86, count: 16)
+    let stateStore = UploadStateStore(
+        persistRoot: FileManager.default.temporaryDirectory.appendingPathComponent("data-gateway-client-f5-recovery-missing-\(UUID().uuidString)"),
+        fileManager: .default,
+        clock: FixedUploadCoordinatorStoreClock(now: Date(timeIntervalSince1970: 3_360))
+    )
+    try await stateStore.saveActive(
+        makePersistedResumeState(
+            logicalUploadID: "logical-recovery-missing",
+            uploadID: "upload-old",
+            managedFileURL: managedURL,
+            fileSize: 16,
+            firstChunkMD5Hex: "E33FF3C1D5D046F83EF110A81067A564",
+            uploadedParts: []
+        )
+    )
+
+    let gatewayClient = MockUploadCoordinatorGatewayClient(
+        createResponse: makeCreateLogicalUploadResponse(uploadID: "upload-new", objectKey: "objects/recovery-missing.bin", partSizeBytes: 8),
+        recoveryResponse: makeContinueRecoveryResponse(currentUploadID: "upload-old"),
+        recoveryError: DataGatewayClientError.gatewayFailed(
+            statusCode: RPCError.Code.notFound.rawValue,
+            detailCode: "DATA_GATEWAY_UPLOAD_NOT_FOUND",
+            message: "upload not found"
+        ),
+        reissueResponse: makeReissueResponse(uploadID: "upload-old", credentials: makeCoordinatorUploadCredentials(expireAtUnix: 9_000, tokenSuffix: "recovery-missing", objectKey: "objects/recovery-missing.bin", partSizeBytes: 8)),
+        completeResponse: Archebase_DataGateway_V1_CompleteUploadResponse()
+    )
+    let ossSession = RefreshAwareMockOssSession(
+        multipartUploadID: "multipart-recovery-missing",
+        uploadDescriptors: [
+            UploadedPartDescriptor(partNumber: 1, etag: "\"etag-recovery-missing-1\"", size: 8, lastModified: nil, hashCRC64: nil),
+            UploadedPartDescriptor(partNumber: 2, etag: "\"etag-recovery-missing-2\"", size: 8, lastModified: nil, hashCRC64: nil),
+        ],
+        completedETag: "\"etag-recovery-missing-object\"",
+        refreshResults: [false, false, false],
+        expirations: [Date(timeIntervalSince1970: 9_000)]
+    )
+    let client = DataGatewayClient(
+        uploadCoordinator: UploadCoordinator(
+            executionPolicy: makeExecutionPolicy(),
+            dependencies: UploadCoordinatorDependencies(
+                gatewayClient: gatewayClient,
+                stateStore: stateStore,
+                fileCoordinator: FileStagingCoordinator(
+                    stagingRoot: URL(fileURLWithPath: "/staging"),
+                    fileSystem: MemoryFileSystem(files: [
+                        managedURL: .file(size: UInt64(payload.count), modifiedAt: Date(timeIntervalSince1970: 250), data: payload),
+                    ]),
+                    securityScopedAccessor: PassthroughSecurityScopedAccessor()
+                ),
+                ossClientFactory: { _ in ossSession },
+                clock: FixedUploadCoordinatorClock(now: Date(timeIntervalSince1970: 3_360))
+            )
+        )
+    )
+
+    let result = try await client.resumeUpload(logicalUploadID: "logical-recovery-missing")
+
+    #expect(result.uploadID == "upload-new")
+    #expect(await gatewayClient.getRecoveryInvocations() == ["logical-recovery-missing"])
+    #expect(await gatewayClient.createRestartInvocations() == [CreateInvocation(clientHints: ["device": "iphone"], restartFromUploadID: "upload-old")])
+}
+
 @Test func restartUploadCountExceededDeletesSnapshotAndFails() async throws {
     let managedURL = URL(fileURLWithPath: "/staging/restart-exceeded.bin")
     let payload = Data(repeating: 0x84, count: 16)
@@ -2022,6 +2088,7 @@ private actor MetricEventRecorder {
 private actor MockUploadCoordinatorGatewayClient: UploadCoordinatorGatewayClient {
     private let createResponse: Archebase_DataGateway_V1_CreateLogicalUploadResponse
     private let recoveryResponse: Archebase_DataGateway_V1_GetUploadRecoveryResponse
+    private let recoveryError: DataGatewayClientError?
     private let reissueResponse: Archebase_DataGateway_V1_ReissueUploadCredentialsResponse
     private let abortResponse: Archebase_DataGateway_V1_AbortUploadResponse
     private let abortError: DataGatewayClientError?
@@ -2036,6 +2103,7 @@ private actor MockUploadCoordinatorGatewayClient: UploadCoordinatorGatewayClient
     init(
         createResponse: Archebase_DataGateway_V1_CreateLogicalUploadResponse,
         recoveryResponse: Archebase_DataGateway_V1_GetUploadRecoveryResponse,
+        recoveryError: DataGatewayClientError? = nil,
         reissueResponse: Archebase_DataGateway_V1_ReissueUploadCredentialsResponse,
         abortResponse: Archebase_DataGateway_V1_AbortUploadResponse = Archebase_DataGateway_V1_AbortUploadResponse(),
         abortError: DataGatewayClientError? = nil,
@@ -2044,6 +2112,7 @@ private actor MockUploadCoordinatorGatewayClient: UploadCoordinatorGatewayClient
     ) {
         self.createResponse = createResponse
         self.recoveryResponse = recoveryResponse
+        self.recoveryError = recoveryError
         self.reissueResponse = reissueResponse
         self.abortResponse = abortResponse
         self.abortError = abortError
@@ -2068,6 +2137,9 @@ private actor MockUploadCoordinatorGatewayClient: UploadCoordinatorGatewayClient
         logicalUploadID: String
     ) async throws -> Archebase_DataGateway_V1_GetUploadRecoveryResponse {
         self.recoveryCalls.append(logicalUploadID)
+        if let recoveryError {
+            throw recoveryError
+        }
         return self.recoveryResponse
     }
 

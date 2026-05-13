@@ -9,7 +9,7 @@ package enum LocalStackHarnessError: Error, Sendable, Equatable {
 
 /// Test-only bootstrap metadata required to create a local `credential_base64`.
 package struct LocalStackBootstrapConfig: Sendable, Equatable {
-    package var gatewayBaseURL: URL
+    package var operationBaseURL: URL
     package var organization: String
     package var adminUserName: String
     package var adminPassword: String
@@ -21,7 +21,7 @@ package struct LocalStackBootstrapConfig: Sendable, Equatable {
     package var csrfOrigin: String
 
     package init(
-        gatewayBaseURL: URL,
+        operationBaseURL: URL,
         organization: String,
         adminUserName: String,
         adminPassword: String,
@@ -32,7 +32,7 @@ package struct LocalStackBootstrapConfig: Sendable, Equatable {
         apiKeyStatus: Int32,
         csrfOrigin: String
     ) {
-        self.gatewayBaseURL = gatewayBaseURL
+        self.operationBaseURL = operationBaseURL
         self.organization = organization
         self.adminUserName = adminUserName
         self.adminPassword = adminPassword
@@ -94,9 +94,9 @@ package struct LocalStackTestEnvironment: Sendable {
 
     /// Returns the HTTP bootstrap configuration used to create one local test credential.
     package func makeBootstrapConfig() throws -> LocalStackBootstrapConfig {
-        let gatewayBaseURL = try self.requiredURL(for: "DGW_LOCAL_GATEWAY_HTTP_BASE")
+        let operationBaseURL = try self.requiredURL(for: "DGW_LOCAL_OPERATION_HTTP_BASE")
         return LocalStackBootstrapConfig(
-            gatewayBaseURL: gatewayBaseURL,
+            operationBaseURL: operationBaseURL,
             organization: self.environment["DGW_LOCAL_BOOTSTRAP_ORGANIZATION"]?.trimmedNonEmpty ?? "system",
             adminUserName: self.environment["DGW_LOCAL_BOOTSTRAP_ADMIN_USER"]?.trimmedNonEmpty ?? "admin",
             adminPassword: try self.requiredValue(for: "DGW_LOCAL_BOOTSTRAP_ADMIN_PASSWORD"),
@@ -105,7 +105,7 @@ package struct LocalStackTestEnvironment: Sendable {
             apiKeyID: self.environment["DGW_LOCAL_BOOTSTRAP_API_KEY_ID"]?.trimmedNonEmpty ?? "swift-local-key",
             apiKeyPrefix: self.environment["DGW_LOCAL_BOOTSTRAP_API_KEY_PREFIX"]?.trimmedNonEmpty ?? "swift-local",
             apiKeyStatus: Self.parseInt32(self.environment["DGW_LOCAL_BOOTSTRAP_API_KEY_STATUS"], defaultValue: 1),
-            csrfOrigin: self.environment["DGW_LOCAL_BOOTSTRAP_CSRF_ORIGIN"]?.trimmedNonEmpty ?? gatewayBaseURL.absoluteString.trimmingTrailingSlash
+            csrfOrigin: self.environment["DGW_LOCAL_BOOTSTRAP_CSRF_ORIGIN"]?.trimmedNonEmpty ?? operationBaseURL.absoluteString.trimmingTrailingSlash
         )
     }
 
