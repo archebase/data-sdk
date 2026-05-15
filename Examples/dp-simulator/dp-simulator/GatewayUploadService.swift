@@ -21,7 +21,7 @@ struct GatewayPaths: Sendable {
 
         return GatewayPaths(
             archebaseRootURL: archebaseRoot,
-            endpointsURL: archebaseRoot.appendingPathComponent("archebase-endpoints.json").standardizedFileURL,
+            endpointsURL: archebaseRoot.appendingPathComponent(ArchebasePublicEndpoints.endpointsFileName).standardizedFileURL,
             configURL: archebaseRoot.appendingPathComponent("archebase-config.json").standardizedFileURL,
             persistRootURL: archebaseRoot.appendingPathComponent("Uploads", isDirectory: true).standardizedFileURL,
             demoFilesURL: archebaseRoot.appendingPathComponent("Demo Files", isDirectory: true).standardizedFileURL

@@ -107,7 +107,7 @@
 			mainGroup = AE7DB8672FAD713E00B4CF49;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				AE7DB8862FAD8A4B00B4CF49 /* XCLocalSwiftPackageReference "../data-sdk" */,
+				AE7DB8862FAD8A4B00B4CF49 /* XCLocalSwiftPackageReference "../.." */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = AE7DB8712FAD713E00B4CF49 /* Products */;
@@ -347,26 +347,26 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		AE7DB8862FAD8A4B00B4CF49 /* XCLocalSwiftPackageReference "../data-sdk" */ = {
+		AE7DB8862FAD8A4B00B4CF49 /* XCLocalSwiftPackageReference "../.." */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = "../data-sdk";
+			relativePath = "../..";
 		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		AE7DB8832FAD8A4B00B4CF49 /* DataGatewayClient */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = AE7DB8862FAD8A4B00B4CF49 /* XCLocalSwiftPackageReference "../data-sdk" */;
+			package = AE7DB8862FAD8A4B00B4CF49 /* XCLocalSwiftPackageReference "../.." */;
 			productName = DataGatewayClient;
 		};
 		AE7DB8842FAD8A4B00B4CF49 /* DGWControlPlane */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = AE7DB8862FAD8A4B00B4CF49 /* XCLocalSwiftPackageReference "../data-sdk" */;
+			package = AE7DB8862FAD8A4B00B4CF49 /* XCLocalSwiftPackageReference "../.." */;
 			productName = DGWControlPlane;
 		};
 		AE7DB8852FAD8A4B00B4CF49 /* DGWStore */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = AE7DB8862FAD8A4B00B4CF49 /* XCLocalSwiftPackageReference "../data-sdk" */;
+			package = AE7DB8862FAD8A4B00B4CF49 /* XCLocalSwiftPackageReference "../.." */;
 			productName = DGWStore;
 		};
 /* End XCSwiftPackageProductDependency section */
