@@ -3,7 +3,6 @@ import DataGatewayClient
 import DGWControlPlane
 import DGWStore
 import Foundation
-import UIKit
 
 @MainActor
 final class UploadDemoViewModel: ObservableObject {
@@ -509,9 +508,7 @@ final class UploadDemoViewModel: ObservableObject {
             return storedValue
         }
 
-        let deviceSuffix = UIDevice.current.identifierForVendor?.uuidString.prefix(8).lowercased()
-            ?? UUID().uuidString.prefix(8).lowercased()
-        return "ios-\(deviceSuffix)"
+        return ""
     }
 
     #if DEBUG
@@ -563,17 +560,17 @@ final class UploadDemoViewModel: ObservableObject {
     {
       "auth": {
         "scheme": "http",
-        "host": "nlb-isnnehtfmxqv70lvm9.cn-shanghai.nlb.aliyuncsslb.com",
+        "host": "nlb-bz7li0ks67z1i7ii00.cn-shanghai.nlb.aliyuncsslb.com",
         "port": 50051
       },
       "gateway": {
         "scheme": "http",
-        "host": "nlb-isnnehtfmxqv70lvm9.cn-shanghai.nlb.aliyuncsslb.com",
+        "host": "nlb-bz7li0ks67z1i7ii00.cn-shanghai.nlb.aliyuncsslb.com",
         "port": 50053
       },
       "deviceInit": {
         "scheme": "http",
-        "host": "nlb-isnnehtfmxqv70lvm9.cn-shanghai.nlb.aliyuncsslb.com",
+        "host": "nlb-bz7li0ks67z1i7ii00.cn-shanghai.nlb.aliyuncsslb.com",
         "port": 50057
       }
     }
