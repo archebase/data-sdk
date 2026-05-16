@@ -107,6 +107,27 @@ func makePersistencePolicy(copyExternalFileIntoManagedStaging: Bool) -> LocalPer
     #expect(endpoints.deviceInitTLS == .tls)
 }
 
+@Test func endpointNormalizationProducesStableJSONForEquivalentInput() throws {
+    let reorderedEndpointsJSON = """
+    {
+      "deviceInit": { "port": 443, "host": "init.example.com", "scheme": "https" },
+      "gateway": { "host": "gateway.example.com", "port": 50053, "scheme": "http" },
+      "auth": { "scheme": "http", "port": 50051, "host": "auth.example.com" }
+    }
+    """
+
+    let normalized = try ArchebasePublicEndpoints.normalizedJSONString(endpointsJSON: validEndpointsJSON())
+    let reorderedNormalized = try ArchebasePublicEndpoints.normalizedJSONString(endpointsJSON: reorderedEndpointsJSON)
+
+    #expect(normalized == reorderedNormalized)
+    #expect(!normalized.contains("device_id"))
+
+    let decoded = try ArchebasePublicEndpoints.decodeEndpoints(Data(normalized.utf8))
+    #expect(decoded.auth == URL(string: "http://auth.example.com:50051")!)
+    #expect(decoded.gateway == URL(string: "http://gateway.example.com:50053")!)
+    #expect(decoded.deviceInit == URL(string: "https://init.example.com:443")!)
+}
+
 @Test func endpointDecodeRejectsLegacySchemaField() {
     let legacySchema = Data("""
     {
@@ -244,6 +265,36 @@ func makePersistencePolicy(copyExternalFileIntoManagedStaging: Bool) -> LocalPer
     }
 
     #expect(error == .endpointsAlreadyInitialized(endpointsURL: endpointsURL.standardizedFileURL))
+}
+
+@Test func endpointReplaceOverwritesDifferentExistingEndpoints() throws {
+    let root = try filePreparationTemporaryRoot()
+    let endpointsURL = root.appendingPathComponent(ArchebasePublicEndpoints.endpointsFileName)
+
+    try DataGatewayClient.initialize(endpointsJSON: validEndpointsJSON(), endpointsURL: endpointsURL)
+    try ArchebasePublicEndpoints.replace(
+        endpointsJSON: validEndpointsJSON(authHost: "replacement-auth.example.com"),
+        endpointsURL: endpointsURL
+    )
+
+    let endpoints = try ArchebasePublicEndpoints.load(endpointsURL: endpointsURL)
+    #expect(endpoints.auth == URL(string: "http://replacement-auth.example.com:50051")!)
+}
+
+@Test func endpointReplaceRejectsInvalidJSONWithoutChangingExistingFile() throws {
+    let root = try filePreparationTemporaryRoot()
+    let endpointsURL = root.appendingPathComponent(ArchebasePublicEndpoints.endpointsFileName)
+
+    try DataGatewayClient.initialize(endpointsJSON: validEndpointsJSON(), endpointsURL: endpointsURL)
+    let originalData = try Data(contentsOf: endpointsURL)
+
+    #expect(throws: DataGatewayClientError.self) {
+        try ArchebasePublicEndpoints.replace(endpointsJSON: "{", endpointsURL: endpointsURL)
+    }
+
+    #expect(try Data(contentsOf: endpointsURL) == originalData)
+    let endpoints = try ArchebasePublicEndpoints.load(endpointsURL: endpointsURL)
+    #expect(endpoints.auth == URL(string: "http://auth.example.com:50051")!)
 }
 
 @Test func endpointInitializeRejectsCorruptExistingFile() throws {

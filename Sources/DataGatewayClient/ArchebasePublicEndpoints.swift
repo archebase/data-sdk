@@ -1,4 +1,5 @@
 import DGWControlPlane
+import DGWStore
 import Foundation
 
 /// Runtime store for Archebase public service endpoints.
@@ -51,6 +52,27 @@ public enum ArchebasePublicEndpoints {
         }
     }
 
+    package static func normalizedJSONData(endpointsJSON: String) throws -> Data {
+        guard !endpointsJSON.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw DataGatewayClientError.invalidConfiguration("archebase endpoints json must not be empty")
+        }
+
+        return try self.normalizedJSONData(from: Data(endpointsJSON.utf8))
+    }
+
+    package static func normalizedJSONData(from data: Data) throws -> Data {
+        let resolved = try self.decodeEndpoints(data)
+        return try self.normalizedJSONData(from: resolved)
+    }
+
+    package static func normalizedJSONString(endpointsJSON: String) throws -> String {
+        let data = try self.normalizedJSONData(endpointsJSON: endpointsJSON)
+        guard let string = String(data: data, encoding: .utf8) else {
+            throw DataGatewayClientError.persistenceFailed("failed to encode normalized archebase endpoints")
+        }
+        return string
+    }
+
     package static func load(endpointsURL: URL) throws -> Resolved {
         let resolvedURL = endpointsURL.standardizedFileURL
         guard FileManager.default.fileExists(atPath: resolvedURL.path) else {
@@ -90,29 +112,52 @@ public enum ArchebasePublicEndpoints {
         try Self.atomicWrite(data, expected: expected, to: resolvedURL, fileManager: fileManager)
     }
 
+    package static func replace(endpointsJSON: String, endpointsURL: URL) throws {
+        let data = try Self.normalizedJSONData(endpointsJSON: endpointsJSON)
+        let expected = try Self.decodeEndpoints(data)
+        let resolvedURL = endpointsURL.standardizedFileURL
+        try Self.atomicWrite(data, expected: expected, to: resolvedURL, fileManager: .default, replacingExisting: true)
+    }
+
+    private static func normalizedJSONData(from resolved: Resolved) throws -> Data {
+        try Self.normalizedEncoder.encode(NormalizedEndpointsPayload(
+            auth: NormalizedEndpointPayload(url: resolved.auth),
+            gateway: NormalizedEndpointPayload(url: resolved.gateway),
+            deviceInit: NormalizedEndpointPayload(url: resolved.deviceInit)
+        ))
+    }
+
     private static func atomicWrite(
         _ data: Data,
         expected: Resolved,
         to endpointsURL: URL,
-        fileManager: FileManager
+        fileManager: FileManager,
+        replacingExisting: Bool = false
     ) throws {
-        let parent = endpointsURL.deletingLastPathComponent()
-        let tempURL = parent.appendingPathComponent(".\(endpointsURL.lastPathComponent).\(UUID().uuidString).tmp")
-
+        var equivalentExistingFileWonRace = false
         do {
-            try fileManager.createDirectory(at: parent, withIntermediateDirectories: true)
-            try Self.writeProtected(data, to: tempURL)
-            do {
-                try fileManager.moveItem(at: tempURL, to: endpointsURL)
-            } catch {
-                if fileManager.fileExists(atPath: endpointsURL.path) {
-                    let existing = try Self.loadPersistedEndpoints(endpointsURL: endpointsURL)
-                    guard existing == expected else {
-                        throw DataGatewayClientError.endpointsAlreadyInitialized(endpointsURL: endpointsURL)
+            try AtomicFileWriter.write(data, to: endpointsURL, fileManager: fileManager) { temporaryURL, destination, fileManager in
+                if replacingExisting {
+                    try AtomicFileWriter.replaceOrMoveTemporaryItem(temporaryURL, to: destination, fileManager: fileManager)
+                } else {
+                    do {
+                        try AtomicFileWriter.moveTemporaryItem(temporaryURL, to: destination, fileManager: fileManager)
+                    } catch {
+                        if fileManager.fileExists(atPath: destination.path) {
+                            let existing = try Self.loadPersistedEndpoints(endpointsURL: destination)
+                            guard existing == expected else {
+                                throw DataGatewayClientError.endpointsAlreadyInitialized(endpointsURL: destination)
+                            }
+                            equivalentExistingFileWonRace = true
+                            return
+                        }
+                        throw error
                     }
-                    return
                 }
-                throw error
+            }
+
+            if equivalentExistingFileWonRace {
+                return
             }
 
             let loaded = try Self.loadPersistedEndpoints(endpointsURL: endpointsURL)
@@ -120,10 +165,8 @@ public enum ArchebasePublicEndpoints {
                 throw DataGatewayClientError.persistenceFailed("archebase endpoints verification failed after write")
             }
         } catch let error as DataGatewayClientError {
-            try? fileManager.removeItem(at: tempURL)
             throw error
         } catch {
-            try? fileManager.removeItem(at: tempURL)
             throw DataGatewayClientError.persistenceFailed(
                 "failed to write archebase endpoints: \(error.localizedDescription)"
             )
@@ -143,19 +186,41 @@ public enum ArchebasePublicEndpoints {
         }
     }
 
-    private static func writeProtected(_ data: Data, to url: URL) throws {
-        #if os(iOS)
-        try data.write(to: url, options: [.completeFileProtectionUnlessOpen])
-        #else
-        try data.write(to: url, options: [])
-        #endif
-    }
+    private static let normalizedEncoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return encoder
+    }()
 }
 
 private struct EndpointsPayload: Decodable {
     var auth: EndpointPayload
     var gateway: EndpointPayload
     var deviceInit: EndpointPayload
+}
+
+private struct NormalizedEndpointsPayload: Encodable {
+    var auth: NormalizedEndpointPayload
+    var gateway: NormalizedEndpointPayload
+    var deviceInit: NormalizedEndpointPayload
+}
+
+private struct NormalizedEndpointPayload: Encodable {
+    var scheme: String
+    var host: String
+    var port: Int
+
+    init(url: URL) throws {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let scheme = components.scheme,
+              let host = components.host,
+              let port = components.port else {
+            throw DataGatewayClientError.invalidConfiguration("normalized endpoint is not a valid URL")
+        }
+        self.scheme = scheme
+        self.host = host
+        self.port = port
+    }
 }
 
 private struct EndpointPayload: Decodable {

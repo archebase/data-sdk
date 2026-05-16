@@ -31,10 +31,12 @@ BOOTSTRAP_API_KEY_SUFFIX="${BOOTSTRAP_RUN_SUFFIX//[^[:alnum:]-]/-}"
 BOOTSTRAP_API_KEY_SUFFIX="${BOOTSTRAP_API_KEY_SUFFIX:0:26}"
 BOOTSTRAP_API_KEY_ID="${DGW_LOCAL_BOOTSTRAP_API_KEY_ID:-swift-key-${BOOTSTRAP_API_KEY_SUFFIX}}"
 BOOTSTRAP_API_KEY_PREFIX="${DGW_LOCAL_BOOTSTRAP_API_KEY_PREFIX:-swift-local-${BOOTSTRAP_API_KEY_SUFFIX}}"
+BOOTSTRAP_API_KEY_NAME="${DGW_LOCAL_BOOTSTRAP_API_KEY_NAME:-$BOOTSTRAP_API_KEY_PREFIX}"
 BOOTSTRAP_API_KEY_STATUS="${DGW_LOCAL_BOOTSTRAP_API_KEY_STATUS:-1}"
 BOOTSTRAP_CSRF_ORIGIN="${DGW_LOCAL_BOOTSTRAP_CSRF_ORIGIN:-$GATEWAY_HTTP_BASE}"
 CURL_CONNECT_TIMEOUT_SECONDS="${DGW_LOCAL_BOOTSTRAP_CONNECT_TIMEOUT_SECONDS:-3}"
 CURL_MAX_TIME_SECONDS="${DGW_LOCAL_BOOTSTRAP_MAX_TIME_SECONDS:-10}"
+OPERATION_API_BASE="${DGW_LOCAL_OPERATION_API_BASE:-/api/operation/v1}"
 
 usage() {
   cat <<'EOF'
@@ -68,10 +70,12 @@ Environment overrides:
   DGW_LOCAL_BOOTSTRAP_SUITE_DESCRIPTION
   DGW_LOCAL_BOOTSTRAP_API_KEY_ID
   DGW_LOCAL_BOOTSTRAP_API_KEY_PREFIX
+  DGW_LOCAL_BOOTSTRAP_API_KEY_NAME
   DGW_LOCAL_BOOTSTRAP_API_KEY_STATUS
   DGW_LOCAL_BOOTSTRAP_CSRF_ORIGIN
   DGW_LOCAL_BOOTSTRAP_CONNECT_TIMEOUT_SECONDS
   DGW_LOCAL_BOOTSTRAP_MAX_TIME_SECONDS
+  DGW_LOCAL_OPERATION_API_BASE
   DATA_PLATFORM_ROOT (required for --start-stack and grpcurl bootstrap; defaults to ../data-platform)
   DATA_PLATFORM_PROTO_ROOT (defaults to DATA_PLATFORM_ROOT/common/proto)
 
@@ -226,34 +230,11 @@ bootstrap_devices_via_grpc() {
 
   local credential_base64="$1"
   local site_id="$2"
-  local admin_token device_body device_response device_name device_id
+  local admin_token suite_body suite_response suite_name
+  local device_body device_response device_name device_id
   local unbound_body unbound_response unbound_name unbound_device_id
-  local suite_body suite_response suite_name add_device_body add_device_response
+  local remove_device_body remove_device_response
   admin_token=$(admin_bearer_token)
-
-  device_body=$(cat <<EOF
-{"displayName":$(json_string "$BOOTSTRAP_DEVICE_DISPLAY_NAME"),"description":$(json_string "$BOOTSTRAP_DEVICE_DESCRIPTION")}
-EOF
-)
-  device_response=$(grpc_call "$META_ENDPOINT" archebase.meta.v1.DeviceManagementService/RegisterDevice "$device_body" -H "Authorization: Bearer ${admin_token}")
-  device_name=$(read_json_field "$device_response" "name")
-  if [[ -z "$device_name" ]]; then
-    echo "failed to register device through grpc: $device_response" >&2
-    exit 1
-  fi
-  device_id="${device_name#devices/}"
-
-  unbound_body=$(cat <<EOF
-{"displayName":$(json_string "$BOOTSTRAP_UNBOUND_DEVICE_DISPLAY_NAME"),"description":$(json_string "$BOOTSTRAP_UNBOUND_DEVICE_DESCRIPTION")}
-EOF
-)
-  unbound_response=$(grpc_call "$META_ENDPOINT" archebase.meta.v1.DeviceManagementService/RegisterDevice "$unbound_body" -H "Authorization: Bearer ${admin_token}")
-  unbound_name=$(read_json_field "$unbound_response" "name")
-  if [[ -z "$unbound_name" ]]; then
-    echo "failed to register unbound device through grpc: $unbound_response" >&2
-    exit 1
-  fi
-  unbound_device_id="${unbound_name#devices/}"
 
   suite_body=$(cat <<EOF
 {"siteId":$(json_string "$site_id"),"displayName":$(json_string "$BOOTSTRAP_SUITE_DISPLAY_NAME"),"description":$(json_string "$BOOTSTRAP_SUITE_DESCRIPTION")}
@@ -266,13 +247,37 @@ EOF
     exit 1
   fi
 
-  add_device_body=$(cat <<EOF
-{"suite":$(json_string "$suite_name"),"device":$(json_string "$device_name")}
+  device_body=$(cat <<EOF
+{"displayName":$(json_string "$BOOTSTRAP_DEVICE_DISPLAY_NAME"),"description":$(json_string "$BOOTSTRAP_DEVICE_DESCRIPTION"),"suite":$(json_string "$suite_name")}
 EOF
 )
-  add_device_response=$(grpc_call "$META_ENDPOINT" archebase.meta.v1.DeviceManagementService/AddDeviceToSuite "$add_device_body" -H "Authorization: Bearer ${admin_token}")
-  if [[ -n "$add_device_response" && "$add_device_response" != "{}" ]]; then
-    echo "failed to bind device to suite through grpc: $add_device_response" >&2
+  device_response=$(grpc_call "$META_ENDPOINT" archebase.meta.v1.DeviceManagementService/RegisterDevice "$device_body" -H "Authorization: Bearer ${admin_token}")
+  device_name=$(read_json_field "$device_response" "name")
+  if [[ -z "$device_name" ]]; then
+    echo "failed to register device through grpc: $device_response" >&2
+    exit 1
+  fi
+  device_id="${device_name#devices/}"
+
+  unbound_body=$(cat <<EOF
+{"displayName":$(json_string "$BOOTSTRAP_UNBOUND_DEVICE_DISPLAY_NAME"),"description":$(json_string "$BOOTSTRAP_UNBOUND_DEVICE_DESCRIPTION"),"suite":$(json_string "$suite_name")}
+EOF
+)
+  unbound_response=$(grpc_call "$META_ENDPOINT" archebase.meta.v1.DeviceManagementService/RegisterDevice "$unbound_body" -H "Authorization: Bearer ${admin_token}")
+  unbound_name=$(read_json_field "$unbound_response" "name")
+  if [[ -z "$unbound_name" ]]; then
+    echo "failed to register unbound device through grpc: $unbound_response" >&2
+    exit 1
+  fi
+  unbound_device_id="${unbound_name#devices/}"
+
+  remove_device_body=$(cat <<EOF
+{"suite":$(json_string "$suite_name"),"device":$(json_string "$unbound_name")}
+EOF
+)
+  remove_device_response=$(grpc_call "$META_ENDPOINT" archebase.meta.v1.DeviceManagementService/RemoveDeviceFromSuite "$remove_device_body" -H "Authorization: Bearer ${admin_token}")
+  if [[ -n "$remove_device_response" && "$remove_device_response" != "{}" ]]; then
+    echo "failed to unbind device from suite through grpc: $remove_device_response" >&2
     exit 1
   fi
 
@@ -286,8 +291,9 @@ bootstrap_via_grpc() {
   fi
 
   local admin_token site_body site_response site_id api_key_body api_key_response credential_base64
+  local suite_body suite_response suite_name
   local device_body device_response device_name device_id unbound_body unbound_response unbound_name unbound_device_id
-  local suite_body suite_response suite_name add_device_body add_device_response
+  local remove_device_body remove_device_response
   admin_token=$(admin_bearer_token)
 
   site_body=$(cat <<EOF
@@ -305,42 +311,21 @@ EOF
   fi
 
   api_key_body=$(cat <<EOF
-{"siteId":${site_id},"keyId":$(json_string "$BOOTSTRAP_API_KEY_ID"),"keyPrefix":$(json_string "$BOOTSTRAP_API_KEY_PREFIX"),"status":${BOOTSTRAP_API_KEY_STATUS}}
+{"siteId":$(json_string "$site_id"),"keyName":$(json_string "$BOOTSTRAP_API_KEY_NAME"),"status":${BOOTSTRAP_API_KEY_STATUS}}
 EOF
 )
-  api_key_response=$(grpc_call "$AUTH_ADMIN_ENDPOINT" archebase.auth.v1.AdminAuthService/CreateApiKey "$api_key_body" -H "Authorization: Bearer ${admin_token}")
-  credential_base64=$(read_json_field "$api_key_response" "credentialBase64")
+  api_key_response=$(grpc_call "$AUTH_ADMIN_ENDPOINT" archebase.auth.v1.AdminAuthService/CreateSiteApiKey "$api_key_body" -H "Authorization: Bearer ${admin_token}")
+  credential_base64=$(read_json_field "$api_key_response" "credential")
+  if [[ -z "$credential_base64" ]]; then
+    credential_base64=$(read_json_field "$api_key_response" "credentialBase64")
+  fi
   if [[ -z "$credential_base64" ]]; then
     credential_base64=$(read_json_field "$api_key_response" "credential_base64")
   fi
   if [[ -z "$credential_base64" ]]; then
-    echo "failed to create api key through grpc: $api_key_response" >&2
+    echo "failed to create site api key through grpc: $api_key_response" >&2
     exit 1
   fi
-
-  device_body=$(cat <<EOF
-{"displayName":$(json_string "$BOOTSTRAP_DEVICE_DISPLAY_NAME"),"description":$(json_string "$BOOTSTRAP_DEVICE_DESCRIPTION")}
-EOF
-)
-  device_response=$(grpc_call "$META_ENDPOINT" archebase.meta.v1.DeviceManagementService/RegisterDevice "$device_body" -H "Authorization: Bearer ${admin_token}")
-  device_name=$(read_json_field "$device_response" "name")
-  if [[ -z "$device_name" ]]; then
-    echo "failed to register device through grpc: $device_response" >&2
-    exit 1
-  fi
-  device_id="${device_name#devices/}"
-
-  unbound_body=$(cat <<EOF
-{"displayName":$(json_string "$BOOTSTRAP_UNBOUND_DEVICE_DISPLAY_NAME"),"description":$(json_string "$BOOTSTRAP_UNBOUND_DEVICE_DESCRIPTION")}
-EOF
-)
-  unbound_response=$(grpc_call "$META_ENDPOINT" archebase.meta.v1.DeviceManagementService/RegisterDevice "$unbound_body" -H "Authorization: Bearer ${admin_token}")
-  unbound_name=$(read_json_field "$unbound_response" "name")
-  if [[ -z "$unbound_name" ]]; then
-    echo "failed to register unbound device through grpc: $unbound_response" >&2
-    exit 1
-  fi
-  unbound_device_id="${unbound_name#devices/}"
 
   suite_body=$(cat <<EOF
 {"siteId":$(json_string "$site_id"),"displayName":$(json_string "$BOOTSTRAP_SUITE_DISPLAY_NAME"),"description":$(json_string "$BOOTSTRAP_SUITE_DESCRIPTION")}
@@ -353,13 +338,37 @@ EOF
     exit 1
   fi
 
-  add_device_body=$(cat <<EOF
-{"suite":$(json_string "$suite_name"),"device":$(json_string "$device_name")}
+  device_body=$(cat <<EOF
+{"displayName":$(json_string "$BOOTSTRAP_DEVICE_DISPLAY_NAME"),"description":$(json_string "$BOOTSTRAP_DEVICE_DESCRIPTION"),"suite":$(json_string "$suite_name")}
 EOF
 )
-  add_device_response=$(grpc_call "$META_ENDPOINT" archebase.meta.v1.DeviceManagementService/AddDeviceToSuite "$add_device_body" -H "Authorization: Bearer ${admin_token}")
-  if [[ -n "$add_device_response" && "$add_device_response" != "{}" ]]; then
-    echo "failed to bind device to suite through grpc: $add_device_response" >&2
+  device_response=$(grpc_call "$META_ENDPOINT" archebase.meta.v1.DeviceManagementService/RegisterDevice "$device_body" -H "Authorization: Bearer ${admin_token}")
+  device_name=$(read_json_field "$device_response" "name")
+  if [[ -z "$device_name" ]]; then
+    echo "failed to register device through grpc: $device_response" >&2
+    exit 1
+  fi
+  device_id="${device_name#devices/}"
+
+  unbound_body=$(cat <<EOF
+{"displayName":$(json_string "$BOOTSTRAP_UNBOUND_DEVICE_DISPLAY_NAME"),"description":$(json_string "$BOOTSTRAP_UNBOUND_DEVICE_DESCRIPTION"),"suite":$(json_string "$suite_name")}
+EOF
+)
+  unbound_response=$(grpc_call "$META_ENDPOINT" archebase.meta.v1.DeviceManagementService/RegisterDevice "$unbound_body" -H "Authorization: Bearer ${admin_token}")
+  unbound_name=$(read_json_field "$unbound_response" "name")
+  if [[ -z "$unbound_name" ]]; then
+    echo "failed to register unbound device through grpc: $unbound_response" >&2
+    exit 1
+  fi
+  unbound_device_id="${unbound_name#devices/}"
+
+  remove_device_body=$(cat <<EOF
+{"suite":$(json_string "$suite_name"),"device":$(json_string "$unbound_name")}
+EOF
+)
+  remove_device_response=$(grpc_call "$META_ENDPOINT" archebase.meta.v1.DeviceManagementService/RemoveDeviceFromSuite "$remove_device_body" -H "Authorization: Bearer ${admin_token}")
+  if [[ -n "$remove_device_response" && "$remove_device_response" != "{}" ]]; then
+    echo "failed to unbind device from suite through grpc: $remove_device_response" >&2
     exit 1
   fi
 
@@ -399,6 +408,7 @@ export DGW_LOCAL_BOOTSTRAP_SUITE_DISPLAY_NAME='${BOOTSTRAP_SUITE_DISPLAY_NAME}'
 export DGW_LOCAL_BOOTSTRAP_SUITE_DESCRIPTION='${BOOTSTRAP_SUITE_DESCRIPTION}'
 export DGW_LOCAL_BOOTSTRAP_API_KEY_ID='${BOOTSTRAP_API_KEY_ID}'
 export DGW_LOCAL_BOOTSTRAP_API_KEY_PREFIX='${BOOTSTRAP_API_KEY_PREFIX}'
+export DGW_LOCAL_BOOTSTRAP_API_KEY_NAME='${BOOTSTRAP_API_KEY_NAME}'
 export DGW_LOCAL_BOOTSTRAP_API_KEY_STATUS='${BOOTSTRAP_API_KEY_STATUS}'
 export DGW_LOCAL_BOOTSTRAP_CSRF_ORIGIN='${BOOTSTRAP_CSRF_ORIGIN}'
 
@@ -443,6 +453,7 @@ EOF
     export DGW_LOCAL_BOOTSTRAP_SUITE_DESCRIPTION="$BOOTSTRAP_SUITE_DESCRIPTION"
     export DGW_LOCAL_BOOTSTRAP_API_KEY_ID="$BOOTSTRAP_API_KEY_ID"
     export DGW_LOCAL_BOOTSTRAP_API_KEY_PREFIX="$BOOTSTRAP_API_KEY_PREFIX"
+    export DGW_LOCAL_BOOTSTRAP_API_KEY_NAME="$BOOTSTRAP_API_KEY_NAME"
     export DGW_LOCAL_BOOTSTRAP_API_KEY_STATUS="$BOOTSTRAP_API_KEY_STATUS"
     export DGW_LOCAL_BOOTSTRAP_CSRF_ORIGIN="$BOOTSTRAP_CSRF_ORIGIN"
     DATA_GATEWAY_CLIENT_USE_MOCK_OSS=1 DGW_LOCAL_RUNTIME_INTEGRATION=1 swift test --filter LocalStackHarnessTests --package-path "${PACKAGE_DIR}"
@@ -483,7 +494,7 @@ curl -fsS \
 LOGIN_ROUTE_STATUS=$(curl -sS -o /dev/null -w '%{http_code}' \
   --connect-timeout "$CURL_CONNECT_TIMEOUT_SECONDS" \
   --max-time "$CURL_MAX_TIME_SECONDS" \
-  "${GATEWAY_HTTP_BASE%/}/api/dataplatform/v1/auth/login" || true)
+  "${GATEWAY_HTTP_BASE%/}${OPERATION_API_BASE}/auth/login" || true)
 case "$LOGIN_ROUTE_STATUS" in
   200|204|400|401|403|405)
     ;;
@@ -502,7 +513,7 @@ EOF
 COOKIE_JAR="$(mktemp /tmp/swift-dgw-cookie.XXXXXX)"
 trap 'rm -f "$COOKIE_JAR"' EXIT
 
-LOGIN_RESPONSE=$(curl -sS -c "$COOKIE_JAR" -X POST "${GATEWAY_HTTP_BASE%/}/api/dataplatform/v1/auth/login" \
+LOGIN_RESPONSE=$(curl -sS -c "$COOKIE_JAR" -X POST "${GATEWAY_HTTP_BASE%/}${OPERATION_API_BASE}/auth/login" \
   --connect-timeout "$CURL_CONNECT_TIMEOUT_SECONDS" \
   --max-time "$CURL_MAX_TIME_SECONDS" \
   -H 'Content-Type: application/json' \
@@ -521,7 +532,7 @@ SITE_BODY=$(cat <<EOF
 {"name":$(json_string "$BOOTSTRAP_SITE_NAME"),"status":${BOOTSTRAP_SITE_STATUS}}
 EOF
 )
-SITE_RESPONSE=$(http_post "${GATEWAY_HTTP_BASE%/}/api/dataplatform/v1/sites" "$SITE_BODY" \
+SITE_RESPONSE=$(http_post "${GATEWAY_HTTP_BASE%/}${OPERATION_API_BASE}/sites" "$SITE_BODY" \
   -H "Origin: ${BOOTSTRAP_CSRF_ORIGIN}" \
   -b "$COOKIE_JAR")
 SITE_ID=$(read_json_field "$SITE_RESPONSE" "site.siteId")
@@ -531,23 +542,39 @@ if [[ -z "$SITE_ID" ]]; then
 fi
 
 API_KEY_BODY=$(cat <<EOF
-{"keyId":$(json_string "$BOOTSTRAP_API_KEY_ID"),"keyPrefix":$(json_string "$BOOTSTRAP_API_KEY_PREFIX"),"status":${BOOTSTRAP_API_KEY_STATUS}}
+{"keyName":$(json_string "$BOOTSTRAP_API_KEY_NAME"),"status":${BOOTSTRAP_API_KEY_STATUS}}
 EOF
 )
-API_KEY_RESPONSE=$(http_post "${GATEWAY_HTTP_BASE%/}/api/dataplatform/v1/sites/${SITE_ID}/api-keys" "$API_KEY_BODY" \
+API_KEY_RESPONSE=$(http_post "${GATEWAY_HTTP_BASE%/}${OPERATION_API_BASE}/sites/${SITE_ID}/api-keys" "$API_KEY_BODY" \
   -H "Origin: ${BOOTSTRAP_CSRF_ORIGIN}" \
   -b "$COOKIE_JAR")
-CREDENTIAL_BASE64=$(read_json_field "$API_KEY_RESPONSE" "credentialBase64")
+CREDENTIAL_BASE64=$(read_json_field "$API_KEY_RESPONSE" "credential")
+if [[ -z "$CREDENTIAL_BASE64" ]]; then
+  CREDENTIAL_BASE64=$(read_json_field "$API_KEY_RESPONSE" "credentialBase64")
+fi
 if [[ -z "$CREDENTIAL_BASE64" ]]; then
   echo "failed to create api key: $API_KEY_RESPONSE" >&2
   exit 1
 fi
 
-DEVICE_BODY=$(cat <<EOF
-{"displayName":$(json_string "$BOOTSTRAP_DEVICE_DISPLAY_NAME"),"description":$(json_string "$BOOTSTRAP_DEVICE_DESCRIPTION")}
+SUITE_BODY=$(cat <<EOF
+{"siteId":$(json_string "$SITE_ID"),"displayName":$(json_string "$BOOTSTRAP_SUITE_DISPLAY_NAME"),"description":$(json_string "$BOOTSTRAP_SUITE_DESCRIPTION")}
 EOF
 )
-DEVICE_RESPONSE=$(http_post "${GATEWAY_HTTP_BASE%/}/api/dataplatform/v1/devices:register" "$DEVICE_BODY" \
+SUITE_RESPONSE=$(http_post "${GATEWAY_HTTP_BASE%/}${OPERATION_API_BASE}/deviceSuites" "$SUITE_BODY" \
+  -H "Origin: ${BOOTSTRAP_CSRF_ORIGIN}" \
+  -b "$COOKIE_JAR")
+SUITE_NAME=$(read_json_field "$SUITE_RESPONSE" "name")
+if [[ -z "$SUITE_NAME" ]]; then
+  echo "failed to create device suite: $SUITE_RESPONSE" >&2
+  exit 1
+fi
+
+DEVICE_BODY=$(cat <<EOF
+{"displayName":$(json_string "$BOOTSTRAP_DEVICE_DISPLAY_NAME"),"description":$(json_string "$BOOTSTRAP_DEVICE_DESCRIPTION"),"suite":$(json_string "$SUITE_NAME")}
+EOF
+)
+DEVICE_RESPONSE=$(http_post "${GATEWAY_HTTP_BASE%/}${OPERATION_API_BASE}/devices:register" "$DEVICE_BODY" \
   -H "Origin: ${BOOTSTRAP_CSRF_ORIGIN}" \
   -b "$COOKIE_JAR")
 DEVICE_NAME=$(read_json_field "$DEVICE_RESPONSE" "name")
@@ -564,10 +591,10 @@ fi
 DEVICE_ID="${DEVICE_NAME#devices/}"
 
 UNBOUND_DEVICE_BODY=$(cat <<EOF
-{"displayName":$(json_string "$BOOTSTRAP_UNBOUND_DEVICE_DISPLAY_NAME"),"description":$(json_string "$BOOTSTRAP_UNBOUND_DEVICE_DESCRIPTION")}
+{"displayName":$(json_string "$BOOTSTRAP_UNBOUND_DEVICE_DISPLAY_NAME"),"description":$(json_string "$BOOTSTRAP_UNBOUND_DEVICE_DESCRIPTION"),"suite":$(json_string "$SUITE_NAME")}
 EOF
 )
-UNBOUND_DEVICE_RESPONSE=$(http_post "${GATEWAY_HTTP_BASE%/}/api/dataplatform/v1/devices:register" "$UNBOUND_DEVICE_BODY" \
+UNBOUND_DEVICE_RESPONSE=$(http_post "${GATEWAY_HTTP_BASE%/}${OPERATION_API_BASE}/devices:register" "$UNBOUND_DEVICE_BODY" \
   -H "Origin: ${BOOTSTRAP_CSRF_ORIGIN}" \
   -b "$COOKIE_JAR")
 UNBOUND_DEVICE_NAME=$(read_json_field "$UNBOUND_DEVICE_RESPONSE" "name")
@@ -577,28 +604,15 @@ if [[ -z "$UNBOUND_DEVICE_NAME" ]]; then
 fi
 UNBOUND_DEVICE_ID="${UNBOUND_DEVICE_NAME#devices/}"
 
-SUITE_BODY=$(cat <<EOF
-{"siteId":$(json_string "$SITE_ID"),"displayName":$(json_string "$BOOTSTRAP_SUITE_DISPLAY_NAME"),"description":$(json_string "$BOOTSTRAP_SUITE_DESCRIPTION")}
+REMOVE_DEVICE_BODY=$(cat <<EOF
+{"device":$(json_string "$UNBOUND_DEVICE_NAME")}
 EOF
 )
-SUITE_RESPONSE=$(http_post "${GATEWAY_HTTP_BASE%/}/api/dataplatform/v1/deviceSuites" "$SUITE_BODY" \
+REMOVE_DEVICE_RESPONSE=$(http_post "${GATEWAY_HTTP_BASE%/}${OPERATION_API_BASE}/${SUITE_NAME}:removeDevice" "$REMOVE_DEVICE_BODY" \
   -H "Origin: ${BOOTSTRAP_CSRF_ORIGIN}" \
   -b "$COOKIE_JAR")
-SUITE_NAME=$(read_json_field "$SUITE_RESPONSE" "name")
-if [[ -z "$SUITE_NAME" ]]; then
-  echo "failed to create device suite: $SUITE_RESPONSE" >&2
-  exit 1
-fi
-
-ADD_DEVICE_BODY=$(cat <<EOF
-{"device":$(json_string "$DEVICE_NAME")}
-EOF
-)
-ADD_DEVICE_RESPONSE=$(http_post "${GATEWAY_HTTP_BASE%/}/api/dataplatform/v1/${SUITE_NAME}:addDevice" "$ADD_DEVICE_BODY" \
-  -H "Origin: ${BOOTSTRAP_CSRF_ORIGIN}" \
-  -b "$COOKIE_JAR")
-if [[ -n "$ADD_DEVICE_RESPONSE" && "$ADD_DEVICE_RESPONSE" != "{}" ]]; then
-  echo "failed to bind device to suite: $ADD_DEVICE_RESPONSE" >&2
+if [[ -n "$REMOVE_DEVICE_RESPONSE" && "$REMOVE_DEVICE_RESPONSE" != "{}" ]]; then
+  echo "failed to unbind device from suite: $REMOVE_DEVICE_RESPONSE" >&2
   exit 1
 fi
 

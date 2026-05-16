@@ -78,6 +78,43 @@ import Testing
     #expect(try await store.load() == old)
 }
 
+@Test func replaceOrInitializeWritesConfigWhenMissing() async throws {
+    let configURL = try temporaryConfigURL()
+    let store = ArchebaseConfigStore(configURL: configURL)
+    let config = try ArchebaseConfig(apiKey: "credential-v1", tags: ["device": "robot"])
+
+    try await store.replaceOrInitialize(config)
+
+    #expect(try await store.load() == config)
+}
+
+@Test func replaceOrInitializeOverwritesExistingConfig() async throws {
+    let configURL = try temporaryConfigURL()
+    let store = ArchebaseConfigStore(configURL: configURL)
+    let old = try ArchebaseConfig(apiKey: "credential-v1", tags: ["device": "old"])
+    let new = try ArchebaseConfig(apiKey: "credential-v2", tags: ["device": "new"])
+    try await store.initialize(old)
+
+    try await store.replaceOrInitialize(new)
+
+    #expect(try await store.load() == new)
+}
+
+@Test func replaceOrInitializeKeepsOldFileOnInvalidNewConfig() async throws {
+    let configURL = try temporaryConfigURL()
+    let store = ArchebaseConfigStore(configURL: configURL)
+    let old = try ArchebaseConfig(apiKey: "credential-v1", tags: ["device": "old"])
+    try await store.initialize(old)
+
+    var invalid = old
+    invalid.apiKey = " "
+    _ = await #expect(throws: DataGatewayClientError.self) {
+        try await store.replaceOrInitialize(invalid)
+    }
+
+    #expect(try await store.load() == old)
+}
+
 @Test func loadRejectsCorruptedJSON() async throws {
     let configURL = try temporaryConfigURL()
     try FileManager.default.createDirectory(at: configURL.deletingLastPathComponent(), withIntermediateDirectories: true)
