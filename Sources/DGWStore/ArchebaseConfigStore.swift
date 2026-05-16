@@ -53,23 +53,26 @@ public actor ArchebaseConfigStore {
         try self.write(config, replacingExisting: true)
     }
 
+    /// Writes or replaces the device configuration without exposing reinit semantics.
+    package func replaceOrInitialize(_ config: ArchebaseConfig) throws {
+        try self.write(config, replacingExisting: true)
+    }
+
     private func write(_ config: ArchebaseConfig, replacingExisting: Bool) throws {
         let data = try config.prettyJSONData()
-        let parent = self.configURL.deletingLastPathComponent()
-        try self.fileManager.createDirectory(at: parent, withIntermediateDirectories: true)
-        let tempURL = parent.appendingPathComponent(".\(self.configURL.lastPathComponent).\(UUID().uuidString).tmp")
         do {
-            try Self.writeProtected(data, to: tempURL)
-            if replacingExisting {
-                try self.replaceOrMoveTemporaryItem(tempURL, to: self.configURL)
-            } else {
-                do {
-                    try self.fileManager.moveItem(at: tempURL, to: self.configURL)
-                } catch {
-                    if self.fileManager.fileExists(atPath: self.configURL.path) {
-                        throw DataGatewayClientError.alreadyInitialized(configURL: self.configURL)
+            try AtomicFileWriter.write(data, to: self.configURL, fileManager: self.fileManager) { temporaryURL, destination, fileManager in
+                if replacingExisting {
+                    try AtomicFileWriter.replaceOrMoveTemporaryItem(temporaryURL, to: destination, fileManager: fileManager)
+                } else {
+                    do {
+                        try AtomicFileWriter.moveTemporaryItem(temporaryURL, to: destination, fileManager: fileManager)
+                    } catch {
+                        if fileManager.fileExists(atPath: destination.path) {
+                            throw DataGatewayClientError.alreadyInitialized(configURL: destination)
+                        }
+                        throw error
                     }
-                    throw error
                 }
             }
             let loaded = try self.load()
@@ -77,36 +80,9 @@ public actor ArchebaseConfigStore {
                 throw DataGatewayClientError.persistenceFailed("archebase config verification failed after write")
             }
         } catch let error as DataGatewayClientError {
-            try? self.fileManager.removeItem(at: tempURL)
             throw error
         } catch {
-            try? self.fileManager.removeItem(at: tempURL)
             throw DataGatewayClientError.persistenceFailed("failed to write archebase config: \(error.localizedDescription)")
         }
-    }
-
-    private func replaceOrMoveTemporaryItem(_ temporaryURL: URL, to destination: URL) throws {
-        if self.fileManager.fileExists(atPath: destination.path) {
-            _ = try self.fileManager.replaceItemAt(destination, withItemAt: temporaryURL)
-            return
-        }
-
-        do {
-            try self.fileManager.moveItem(at: temporaryURL, to: destination)
-        } catch {
-            if self.fileManager.fileExists(atPath: destination.path) {
-                _ = try self.fileManager.replaceItemAt(destination, withItemAt: temporaryURL)
-                return
-            }
-            throw error
-        }
-    }
-
-    private static func writeProtected(_ data: Data, to url: URL) throws {
-        #if os(iOS)
-        try data.write(to: url, options: [.completeFileProtectionUnlessOpen])
-        #else
-        try data.write(to: url, options: [])
-        #endif
     }
 }

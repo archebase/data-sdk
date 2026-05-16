@@ -120,6 +120,117 @@ iOS App 推荐使用配置文件驱动方式接入。
 
 如果接入方已经通过其他安全渠道直接向 App 下发 `API Key`，也可以跳过设备初始化，直接使用 `DataGatewayClientConfig.recommended(...)` 创建客户端。生产 App 通常优先使用设备初始化方式。
 
+### 5.1 穹彻专供接入
+
+穹彻 App 优先使用 `QiongcheDataGatewaySDK`，不需要自行编排 endpoint 初始化、设备初始化和本地配置覆盖。穹彻 facade 只提供两个入口：
+
+```swift
+let qiongcheSDK = try QiongcheDataGatewaySDK()
+
+try await qiongcheSDK.saveConfigAndInit(configString: configStringFromTrustedChannel)
+
+let ready = await qiongcheSDK.isReadyToUpload()
+```
+
+`saveConfigAndInit(configString:)` 接收穹彻可信渠道下发的完整配置字符串，完成设备初始化并写入本地文件。`isReadyToUpload()` 用于上传前判断本地配置和服务连通性是否满足创建上传客户端的条件。
+
+穹彻封装不提供 `reinit`、`reset` 或 `replaceConfig` 入口。需要更新配置时，继续调用 `saveConfigAndInit(configString:)`；该方法会在远端初始化成功后覆盖本地 endpoint、设备配置和穹彻 state。
+
+完成 ready 检查后，上传仍使用通用上传客户端：
+
+```swift
+let supportRoot = FileManager.default.urls(
+    for: .applicationSupportDirectory,
+    in: .userDomainMask
+)[0]
+let archebaseRoot = supportRoot.appendingPathComponent("Archebase", isDirectory: true)
+
+let client = try await DataGatewayClient.fromArchebaseConfig(
+    configURL: archebaseRoot.appendingPathComponent("archebase-config.json"),
+    persistRootURL: archebaseRoot.appendingPathComponent("Uploads", isDirectory: true),
+    endpointsURL: archebaseRoot.appendingPathComponent("archebase-endpoints.json")
+)
+```
+
+穹彻配置字符串是 UTF-8 JSON，顶层只接受 `auth`、`gateway`、`deviceInit` 和 `device_id`：
+
+```json
+{
+  "device_id": "robot-001",
+  "auth": { "scheme": "http", "host": "localhost", "port": 50051 },
+  "gateway": { "scheme": "http", "host": "localhost", "port": 50053 },
+  "deviceInit": { "scheme": "http", "host": "localhost", "port": 50057 }
+}
+```
+
+字段约束：
+
+| 字段 | 说明 |
+|---|---|
+| `device_id` | 必填，trim 后不能为空，不能包含控制字符；只写入穹彻 state，不写入 endpoint 文件。 |
+| `auth` | 认证服务 endpoint，只接受 `scheme`、`host`、`port`。 |
+| `gateway` | 上传网关 endpoint，只接受 `scheme`、`host`、`port`。 |
+| `deviceInit` | 设备初始化 endpoint，只接受 `scheme`、`host`、`port`。 |
+
+`saveConfigAndInit(configString:)` 的覆盖规则：
+
+1. 先解析配置并使用本次 `deviceInit` endpoint 调远端初始化。
+2. 远端初始化成功后，覆盖写入 `archebase-endpoints.json`、`archebase-config.json` 和 `qiongche-sdk-state.json`。
+3. 本地已有 endpoint、设备配置或 state 时，不因为内容不同报错。
+4. 远端初始化失败时，不覆盖本地已有 endpoint、设备配置或 state。
+5. endpoint 文件只保存 `auth`、`gateway`、`deviceInit`，不会保存 `device_id`。
+
+`isReadyToUpload()` 的判断范围：
+
+1. 本地 `archebase-config.json` 存在且可解析。
+2. 本地 `archebase-endpoints.json` 存在且可解析。
+3. `auth` 和 `gateway` endpoint 可发起轻量 gRPC 请求。
+
+`isReadyToUpload()` 不创建上传任务，不申请对象存储临时凭证，不探测对象存储，也不探测 `deviceInit` endpoint。返回 `false` 的常见原因包括本地文件缺失、JSON 损坏、endpoint 不可达、TLS 配置不匹配、DNS/TCP 连接失败或请求超时。
+
+穹彻接入时建议单独处理配置错误：
+
+```swift
+do {
+    try await qiongcheSDK.saveConfigAndInit(configString: configStringFromTrustedChannel)
+} catch let error as QiongcheSDKError {
+    switch error {
+    case .invalidConfigString(let message):
+        print(message)
+    }
+} catch let error as DataGatewayClientError {
+    switch error {
+    case .persistenceFailed(let message):
+        print(message)
+    default:
+        print(error)
+    }
+} catch {
+    print(error.localizedDescription)
+}
+```
+
+安全注意事项：
+
+1. 不要把完整 `configString`、`api_key`、access token、STS secret 或带签名 query 的 URL 写入日志、埋点、剪贴板或可导出的诊断文件。
+2. App UI 不应展示 `archebase-config.json` 中的 `api_key`。
+3. `configString` 只能来自可信渠道；再次提交会切换本机 endpoint、设备配置和穹彻 state。
+4. 排查问题时优先记录短错误摘要、文件是否存在、ready 结果和时间，不记录敏感字段值。
+
+穹彻示例 App 位于：
+
+```text
+Examples/qiongche-sdk-demo/
+```
+
+运行方式：
+
+```bash
+open Examples/qiongche-sdk-demo/qiongche-sdk-demo.xcodeproj
+```
+
+示例 App 面向穹彻 SDK 接入者，首屏提供配置输入、保存并初始化、本地状态、ready 检查、生成样例文件和上传样例文件。示例 App 不提供 reinit 按钮；再次提交配置会继续调用 `saveConfigAndInit(configString:)` 覆盖本地 endpoint、设备配置和穹彻 state。
+
 ## 6. 文件目录建议
 
 建议将 SDK 配置和上传持久化状态放在 `Application Support` 下，并保持在 App 私有容器内：
