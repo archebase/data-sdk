@@ -72,20 +72,16 @@ import DGWStore
     #expect(await transport.requests().map(\.method) == [.initDevice])
 }
 
-@Test func reinitDeviceRejectsWhenConfigMissingWithoutRemoteCall() async throws {
+@Test func reinitDeviceCanRecoverWhenConfigMissing() async throws {
     let store = ArchebaseConfigStore(configURL: temporaryConfigURL())
     let transport = RecordingDeviceInitTransport(response: .success(response(apiKey: "credential-new")))
     let initializer = try ArchebaseDeviceInitializer(configStore: store, initTransport: transport)
 
-    let error = await #expect(throws: DataGatewayClientError.self) {
-        _ = try await initializer.reinitDevice(deviceID: "260427-000001")
-    }
+    let config = try await initializer.reinitDevice(deviceID: "260427-000001")
 
-    guard case .notInitialized = error else {
-        Issue.record("expected notInitialized, got \(String(describing: error))")
-        return
-    }
-    #expect(await transport.requests().isEmpty)
+    #expect(config == (try ArchebaseConfig(apiKey: "credential-new", tags: [:])))
+    #expect(try await store.load() == config)
+    #expect(await transport.requests().map(\.method) == [.reinitDevice])
 }
 
 @Test func reinitDeviceReplacesExistingConfig() async throws {

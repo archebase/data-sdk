@@ -51,9 +51,21 @@ package struct DefaultQiongcheDeviceProvisioner: QiongcheDeviceProvisioning {
         }
 
         do {
-            return try await Self.remoteConfig(deviceID: deviceID, transport: transport.serviceClient, mode: .initDevice)
+            return try await DeviceInitConfigFetcher.fetch(
+                mode: .initDevice,
+                deviceID: deviceID,
+                transport: transport.serviceClient,
+                sdkVersion: DataGatewayClientModule.version,
+                platform: "ios"
+            )
         } catch let error as DataGatewayClientError where error.isDeviceAlreadyInitialized {
-            return try await Self.remoteConfig(deviceID: deviceID, transport: transport.serviceClient, mode: .reinitDevice)
+            return try await DeviceInitConfigFetcher.fetch(
+                mode: .reinitDevice,
+                deviceID: deviceID,
+                transport: transport.serviceClient,
+                sdkVersion: DataGatewayClientModule.version,
+                platform: "ios"
+            )
         }
     }
 
@@ -81,39 +93,6 @@ package struct DefaultQiongcheDeviceProvisioner: QiongcheDeviceProvisioning {
             }
         )
     }
-
-    private static func remoteConfig(
-        deviceID: String,
-        transport: any DeviceInitTransport,
-        mode: DeviceInitRemoteMode
-    ) async throws -> ArchebaseConfig {
-        do {
-            let response = switch mode {
-            case .initDevice:
-                try await transport.initDevice(
-                    deviceID: deviceID,
-                    sdkVersion: DataGatewayClientModule.version,
-                    platform: "ios"
-                )
-            case .reinitDevice:
-                try await transport.reinitDevice(
-                    deviceID: deviceID,
-                    sdkVersion: DataGatewayClientModule.version,
-                    platform: "ios"
-                )
-            }
-            return try ArchebaseConfig(apiKey: response.apiKey, tags: response.tags)
-        } catch let error as DataGatewayClientError {
-            throw error
-        } catch {
-            throw ControlPlaneErrorMapper.map(error)
-        }
-    }
-}
-
-private enum DeviceInitRemoteMode {
-    case initDevice
-    case reinitDevice
 }
 
 private extension DataGatewayClientError {

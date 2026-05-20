@@ -388,6 +388,50 @@ import Testing
     #expect(await provisioner.records().count == 2)
 }
 
+@Test func qiongcheSaveConfigAndInitInvalidatesReadyStateAfterRemoteSuccessWhenLocalPersistenceFailsAndRecovers() async throws {
+    let root = try qiongcheTemporaryRoot()
+    let paths = try QiongcheSDKPaths(rootURL: root)
+    let oldConfigString = validQiongcheConfig(deviceID: "robot-001", authHost: "old-auth.example.com")
+    try await writeQiongcheReadyFiles(
+        rootURL: root,
+        configString: oldConfigString,
+        remoteConfig: try ArchebaseConfig(apiKey: "credential-old", tags: ["device": "old"])
+    )
+    let newConfigString = validQiongcheConfig(deviceID: "robot-001", authHost: "new-auth.example.com")
+    let recoveredConfig = try ArchebaseConfig(apiKey: "credential-v3", tags: ["device": "recovered"])
+    let provisioner = SequencedQiongcheDeviceProvisioner(configs: [
+        try ArchebaseConfig(apiKey: "credential-v2", tags: ["device": "rotated"]),
+        recoveredConfig,
+    ])
+    let persister = FailingDefaultQiongcheLocalPersister(failures: [.endpoints])
+    let sdk = try QiongcheDataGatewaySDK(
+        rootURL: root,
+        deviceProvisioner: provisioner,
+        readinessProbe: AlwaysReachableQiongcheProbe(),
+        localPersister: persister,
+        clock: FixedQiongcheSDKClock(date: Date(timeIntervalSince1970: 2))
+    )
+
+    await #expect(throws: DataGatewayClientError.self) {
+        try await sdk.saveConfigAndInit(configString: newConfigString)
+    }
+
+    #expect(await sdk.isReadyToUpload() == false)
+    #expect(throws: DataGatewayClientError.self) {
+        _ = try QiongcheSDKStateStore(stateURL: paths.stateURL).load()
+    }
+
+    try await sdk.saveConfigAndInit(configString: newConfigString)
+
+    #expect(try await ArchebaseConfigStore(configURL: paths.configURL).load() == recoveredConfig)
+    let parsed = try QiongcheConfigParser.parse(newConfigString)
+    let state = try QiongcheSDKStateStore(stateURL: paths.stateURL).load()
+    #expect(state.deviceID == "robot-001")
+    #expect(state.endpointsSHA256 == parsed.endpointsSHA256Hex)
+    #expect(await sdk.isReadyToUpload())
+    #expect(await provisioner.records().count == 2)
+}
+
 @Test func qiongcheEndpointReachabilityClassifiesReachableRPCFailures() {
     for code in [
         RPCError.Code.unauthenticated,
@@ -529,11 +573,22 @@ func qiongcheTemporaryRoot() throws -> URL {
     return root
 }
 
-private func writeQiongcheReadyFiles(rootURL: URL) async throws {
+private func writeQiongcheReadyFiles(
+    rootURL: URL,
+    configString: String = validQiongcheConfig(),
+    remoteConfig: ArchebaseConfig? = nil,
+    initializedAtUnix: Int64 = 1
+) async throws {
     let paths = try QiongcheSDKPaths(rootURL: rootURL)
-    try ArchebasePublicEndpoints.replace(endpointsJSON: validQiongcheConfig(), endpointsURL: paths.endpointsURL)
+    let parsed = try QiongcheConfigParser.parse(configString)
+    try ArchebasePublicEndpoints.replace(endpointsJSON: configString, endpointsURL: paths.endpointsURL)
     try await ArchebaseConfigStore(configURL: paths.configURL)
-        .replaceOrInitialize(try ArchebaseConfig(apiKey: "credential-v1", tags: [:]))
+        .replaceOrInitialize(remoteConfig ?? (try ArchebaseConfig(apiKey: "credential-v1", tags: [:])))
+    try QiongcheSDKStateStore(stateURL: paths.stateURL).replace(try QiongcheSDKState(
+        deviceID: parsed.deviceID,
+        endpointsSHA256: parsed.endpointsSHA256Hex,
+        initializedAtUnix: initializedAtUnix
+    ))
 }
 
 private func qiongcheReadySDK(
@@ -659,6 +714,32 @@ private actor RecordingQiongcheDeviceProvisioner: QiongcheDeviceProvisioning {
     }
 }
 
+private actor SequencedQiongcheDeviceProvisioner: QiongcheDeviceProvisioning {
+    private var configs: [ArchebaseConfig]
+    private var recorded: [RecordingQiongcheDeviceProvisioner.Record] = []
+
+    init(configs: [ArchebaseConfig]) {
+        self.configs = configs
+    }
+
+    func initDevice(
+        deviceID: String,
+        deviceInitEndpoint: URL,
+        tls: TLSMode,
+        timeout: Duration
+    ) async throws -> ArchebaseConfig {
+        self.recorded.append(.init(deviceID: deviceID, endpoint: deviceInitEndpoint, tls: tls, timeout: timeout))
+        guard !self.configs.isEmpty else {
+            throw DataGatewayClientError.invalidConfiguration("qiongche provisioner test config missing")
+        }
+        return self.configs.removeFirst()
+    }
+
+    func records() -> [RecordingQiongcheDeviceProvisioner.Record] {
+        self.recorded
+    }
+}
+
 private struct AlwaysReachableQiongcheProbe: QiongcheEndpointProbing {
     func authEndpointReachable(endpoint: URL, tls: TLSMode, timeout: Duration) async -> Bool {
         _ = (endpoint, tls, timeout)
@@ -752,6 +833,43 @@ private actor RecordingQiongcheLocalPersister: QiongcheLocalPersisting {
 
     private func record(_ stage: Stage) throws {
         self.recordedOperations.append(stage)
+        if self.failures.first == stage {
+            self.failures.removeFirst()
+            throw DataGatewayClientError.persistenceFailed("injected qiongche \(stage) failure")
+        }
+    }
+}
+
+private actor FailingDefaultQiongcheLocalPersister: QiongcheLocalPersisting {
+    enum Stage: Equatable, Sendable {
+        case endpoints
+        case config
+        case state
+    }
+
+    private let delegate = DefaultQiongcheLocalPersister()
+    private var failures: [Stage]
+
+    init(failures: [Stage]) {
+        self.failures = failures
+    }
+
+    func replaceEndpoints(endpointsJSON: String, endpointsURL: URL) async throws {
+        try self.failIfNeeded(.endpoints)
+        try await self.delegate.replaceEndpoints(endpointsJSON: endpointsJSON, endpointsURL: endpointsURL)
+    }
+
+    func replaceConfig(_ config: ArchebaseConfig, configURL: URL) async throws {
+        try self.failIfNeeded(.config)
+        try await self.delegate.replaceConfig(config, configURL: configURL)
+    }
+
+    func replaceState(_ state: QiongcheSDKState, stateURL: URL) async throws {
+        try self.failIfNeeded(.state)
+        try await self.delegate.replaceState(state, stateURL: stateURL)
+    }
+
+    private func failIfNeeded(_ stage: Stage) throws {
         if self.failures.first == stage {
             self.failures.removeFirst()
             throw DataGatewayClientError.persistenceFailed("injected qiongche \(stage) failure")

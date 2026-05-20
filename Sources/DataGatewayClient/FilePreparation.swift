@@ -501,44 +501,24 @@ public actor ArchebaseDeviceInitializer {
         return config
     }
 
-    /// Reinitializes a device by rotating the remote credential and replacing the local configuration.
+    /// Reinitializes a device by rotating the remote credential and writing the local configuration.
+    ///
+    /// This can recover a missing local config after a prior remote init succeeded but local persistence did not complete.
     public func reinitDevice(deviceID: String) async throws -> ArchebaseConfig {
-        if await !self.configStore.exists() {
-            throw DataGatewayClientError.notInitialized(configURL: await self.configStore.resolvedConfigURL())
-        }
         let config = try await self.remoteConfig(deviceID: deviceID, mode: .reinitDevice)
-        try await self.configStore.replaceForReinit(config)
+        try await self.configStore.replaceOrInitialize(config)
         return config
     }
 
     private func remoteConfig(deviceID: String, mode: DeviceInitRemoteMode) async throws -> ArchebaseConfig {
-        do {
-            let response = switch mode {
-            case .initDevice:
-                try await self.initTransport.initDevice(
-                    deviceID: deviceID,
-                    sdkVersion: self.sdkVersion,
-                    platform: self.platform
-                )
-            case .reinitDevice:
-                try await self.initTransport.reinitDevice(
-                    deviceID: deviceID,
-                    sdkVersion: self.sdkVersion,
-                    platform: self.platform
-                )
-            }
-            return try ArchebaseConfig(apiKey: response.apiKey, tags: response.tags)
-        } catch let error as DataGatewayClientError {
-            throw error
-        } catch {
-            throw ControlPlaneErrorMapper.map(error)
-        }
+        try await DeviceInitConfigFetcher.fetch(
+            mode: mode,
+            deviceID: deviceID,
+            transport: self.initTransport,
+            sdkVersion: self.sdkVersion,
+            platform: self.platform
+        )
     }
-}
-
-private enum DeviceInitRemoteMode {
-    case initDevice
-    case reinitDevice
 }
 
 package final class DeviceInitRuntimeResources: @unchecked Sendable {

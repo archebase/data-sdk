@@ -397,7 +397,7 @@ case "$MODE" in
       AUTH_ENDPOINT_KEY="${RUNTIME_ENV_PREFIX}_AUTH_ENDPOINT"
       GATEWAY_ENDPOINT_KEY="${RUNTIME_ENV_PREFIX}_GATEWAY_ENDPOINT"
       INIT_ENDPOINT_KEY="${RUNTIME_ENV_PREFIX}_INIT_ENDPOINT"
-      for key in "$AUTH_ENDPOINT_KEY" "$GATEWAY_ENDPOINT_KEY"; do
+      for key in "$AUTH_ENDPOINT_KEY" "$GATEWAY_ENDPOINT_KEY" "$INIT_ENDPOINT_KEY"; do
         if [[ -z "${!key:-}" ]]; then
           echo "${key} is required for simulator smoke execution" >&2
           exit 1

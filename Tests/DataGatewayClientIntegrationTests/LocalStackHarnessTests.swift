@@ -178,6 +178,7 @@ struct LocalStackHarnessTests {
 
     #expect(script.contains("xcodebuild build-for-testing"))
     #expect(script.contains("-skipPackageUpdates"))
+    #expect(script.contains(#"for key in "$AUTH_ENDPOINT_KEY" "$GATEWAY_ENDPOINT_KEY" "$INIT_ENDPOINT_KEY"; do"#))
 }
 
 @Test func aliyunEnvironmentContractValidatesPresenceOfCredentials() {
