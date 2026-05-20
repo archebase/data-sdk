@@ -117,6 +117,30 @@ import GRPCCore
     ])
 }
 
+@Test func deviceInitTransportBuildsReinitRequestWithoutAuthorization() async throws {
+    let stub = DeviceInitServiceClientStub()
+    let transport = DeviceInitServiceClientTransport(client: stub, requestTimeout: .seconds(6))
+
+    let response = try await transport.reinitDevice(
+        deviceID: "260427-000001",
+        sdkVersion: "1.2.3",
+        platform: "ios"
+    )
+
+    #expect(response.apiKey == "credential-v2")
+    #expect(response.tags == ["device": "robot-reinit"])
+
+    let invocations = await stub.invocations()
+    #expect(invocations == [
+        InvocationRecord(
+            method: "ReinitDevice",
+            metadata: ["authorization": []],
+            timeout: .seconds(6),
+            requestSummary: "260427-000001:1.2.3:ios"
+        ),
+    ])
+}
+
 @Test func deviceInitErrorMapperDecodesGatewayDetail() {
     let error = makeRPCError(
         code: .failedPrecondition,
@@ -318,6 +342,30 @@ private actor DeviceInitServiceClientStub: Archebase_DataGateway_V1_DeviceInitSe
         var response = Archebase_DataGateway_V1_InitDeviceResponse()
         response.apiKey = "credential-v1"
         response.tags = ["device": "robot"]
+        return try await handleResponse(ClientResponse(message: response))
+    }
+
+    func reinitDevice<Result>(
+        request: ClientRequest<Archebase_DataGateway_V1_ReinitDeviceRequest>,
+        serializer: some MessageSerializer<Archebase_DataGateway_V1_ReinitDeviceRequest>,
+        deserializer: some MessageDeserializer<Archebase_DataGateway_V1_InitDeviceResponse>,
+        options: CallOptions,
+        onResponse handleResponse: @Sendable @escaping (ClientResponse<Archebase_DataGateway_V1_InitDeviceResponse>) async throws -> Result
+    ) async throws -> Result where Result : Sendable {
+        self.records.append(
+            InvocationRecord(
+                method: "ReinitDevice",
+                metadata: Dictionary(uniqueKeysWithValues: [
+                    ("authorization", Array(request.metadata[stringValues: "authorization"])),
+                ]),
+                timeout: options.timeout,
+                requestSummary: "\(request.message.deviceID):\(request.message.sdkVersion):\(request.message.platform)"
+            )
+        )
+
+        var response = Archebase_DataGateway_V1_InitDeviceResponse()
+        response.apiKey = "credential-v2"
+        response.tags = ["device": "robot-reinit"]
         return try await handleResponse(ClientResponse(message: response))
     }
 

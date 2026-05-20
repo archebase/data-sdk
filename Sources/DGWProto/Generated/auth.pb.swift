@@ -58,6 +58,62 @@ public enum Archebase_Auth_V1_UserRole: SwiftProtobuf.Enum, Swift.CaseIterable {
 
 }
 
+/// Business identity, orthogonal to UserRole (privilege). See
+/// docs/design/abac-design.md §3. Service accounts always carry
+/// USER_CLASS_UNSPECIFIED; every HUMAN user must have one of the
+/// concrete classes per ck_users_admin_class_consistency /
+/// ck_users_normal_class_consistency / ck_users_service_account_class
+/// in migration 0018.
+public enum Archebase_Auth_V1_UserClass: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case systemAdmin // = 1
+  case orgAdmin // = 2
+  case annotator // = 3
+  case reviewer // = 4
+  case viewer // = 5
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .systemAdmin
+    case 2: self = .orgAdmin
+    case 3: self = .annotator
+    case 4: self = .reviewer
+    case 5: self = .viewer
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .systemAdmin: return 1
+    case .orgAdmin: return 2
+    case .annotator: return 3
+    case .reviewer: return 4
+    case .viewer: return 5
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Archebase_Auth_V1_UserClass] = [
+    .unspecified,
+    .systemAdmin,
+    .orgAdmin,
+    .annotator,
+    .reviewer,
+    .viewer,
+  ]
+
+}
+
 public enum Archebase_Auth_V1_AuthErrorCode: SwiftProtobuf.Enum, Swift.CaseIterable {
   public typealias RawValue = Int
   case unspecified // = 0
@@ -156,35 +212,50 @@ public struct Archebase_Auth_V1_LoginRequest: Sendable {
   public init() {}
 }
 
-public struct Archebase_Auth_V1_LoginResponse: Sendable {
+public struct Archebase_Auth_V1_LoginResponse: @unchecked Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  public var accessToken: String = String()
+  public var accessToken: String {
+    get {_storage._accessToken}
+    set {_uniqueStorage()._accessToken = newValue}
+  }
 
-  public var accessTokenExpiresAtUnix: Int64 = 0
+  public var accessTokenExpiresAtUnix: Int64 {
+    get {_storage._accessTokenExpiresAtUnix}
+    set {_uniqueStorage()._accessTokenExpiresAtUnix = newValue}
+  }
 
-  public var refreshToken: String = String()
+  public var refreshToken: String {
+    get {_storage._refreshToken}
+    set {_uniqueStorage()._refreshToken = newValue}
+  }
 
-  public var refreshTokenExpiresAtUnix: Int64 = 0
+  public var refreshTokenExpiresAtUnix: Int64 {
+    get {_storage._refreshTokenExpiresAtUnix}
+    set {_uniqueStorage()._refreshTokenExpiresAtUnix = newValue}
+  }
 
-  public var tokenType: String = String()
+  public var tokenType: String {
+    get {_storage._tokenType}
+    set {_uniqueStorage()._tokenType = newValue}
+  }
 
   public var user: Archebase_Auth_V1_User {
-    get {_user ?? Archebase_Auth_V1_User()}
-    set {_user = newValue}
+    get {_storage._user ?? Archebase_Auth_V1_User()}
+    set {_uniqueStorage()._user = newValue}
   }
   /// Returns true if `user` has been explicitly set.
-  public var hasUser: Bool {self._user != nil}
+  public var hasUser: Bool {_storage._user != nil}
   /// Clears the value of `user`. Subsequent reads from it will return its default value.
-  public mutating func clearUser() {self._user = nil}
+  public mutating func clearUser() {_uniqueStorage()._user = nil}
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
-  fileprivate var _user: Archebase_Auth_V1_User? = nil
+  fileprivate var _storage = _StorageClass.defaultInstance
 }
 
 public struct Archebase_Auth_V1_RefreshTokenRequest: Sendable {
@@ -199,35 +270,50 @@ public struct Archebase_Auth_V1_RefreshTokenRequest: Sendable {
   public init() {}
 }
 
-public struct Archebase_Auth_V1_RefreshTokenResponse: Sendable {
+public struct Archebase_Auth_V1_RefreshTokenResponse: @unchecked Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  public var accessToken: String = String()
+  public var accessToken: String {
+    get {_storage._accessToken}
+    set {_uniqueStorage()._accessToken = newValue}
+  }
 
-  public var accessTokenExpiresAtUnix: Int64 = 0
+  public var accessTokenExpiresAtUnix: Int64 {
+    get {_storage._accessTokenExpiresAtUnix}
+    set {_uniqueStorage()._accessTokenExpiresAtUnix = newValue}
+  }
 
-  public var refreshToken: String = String()
+  public var refreshToken: String {
+    get {_storage._refreshToken}
+    set {_uniqueStorage()._refreshToken = newValue}
+  }
 
-  public var refreshTokenExpiresAtUnix: Int64 = 0
+  public var refreshTokenExpiresAtUnix: Int64 {
+    get {_storage._refreshTokenExpiresAtUnix}
+    set {_uniqueStorage()._refreshTokenExpiresAtUnix = newValue}
+  }
 
-  public var tokenType: String = String()
+  public var tokenType: String {
+    get {_storage._tokenType}
+    set {_uniqueStorage()._tokenType = newValue}
+  }
 
   public var user: Archebase_Auth_V1_User {
-    get {_user ?? Archebase_Auth_V1_User()}
-    set {_user = newValue}
+    get {_storage._user ?? Archebase_Auth_V1_User()}
+    set {_uniqueStorage()._user = newValue}
   }
   /// Returns true if `user` has been explicitly set.
-  public var hasUser: Bool {self._user != nil}
+  public var hasUser: Bool {_storage._user != nil}
   /// Clears the value of `user`. Subsequent reads from it will return its default value.
-  public mutating func clearUser() {self._user = nil}
+  public mutating func clearUser() {_uniqueStorage()._user = nil}
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
-  fileprivate var _user: Archebase_Auth_V1_User? = nil
+  fileprivate var _storage = _StorageClass.defaultInstance
 }
 
 public struct Archebase_Auth_V1_ExchangeSystemCredentialRequest: Sendable {
@@ -299,6 +385,12 @@ public struct Archebase_Auth_V1_User: Sendable {
   public var hasUpdatedAt: Bool {self._updatedAt != nil}
   /// Clears the value of `updatedAt`. Subsequent reads from it will return its default value.
   public mutating func clearUpdatedAt() {self._updatedAt = nil}
+
+  public var userClass: Archebase_Auth_V1_UserClass = .unspecified
+
+  public var organizationID: Int64 = 0
+
+  public var userID: Int64 = 0
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -944,35 +1036,34 @@ public struct Archebase_Auth_V1_CreateOrganizationRequest: Sendable {
   public init() {}
 }
 
-public struct Archebase_Auth_V1_CreateOrganizationResponse: Sendable {
+public struct Archebase_Auth_V1_CreateOrganizationResponse: @unchecked Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
   public var organization: Archebase_Auth_V1_Organization {
-    get {_organization ?? Archebase_Auth_V1_Organization()}
-    set {_organization = newValue}
+    get {_storage._organization ?? Archebase_Auth_V1_Organization()}
+    set {_uniqueStorage()._organization = newValue}
   }
   /// Returns true if `organization` has been explicitly set.
-  public var hasOrganization: Bool {self._organization != nil}
+  public var hasOrganization: Bool {_storage._organization != nil}
   /// Clears the value of `organization`. Subsequent reads from it will return its default value.
-  public mutating func clearOrganization() {self._organization = nil}
+  public mutating func clearOrganization() {_uniqueStorage()._organization = nil}
 
   public var bootstrapAdmin: Archebase_Auth_V1_User {
-    get {_bootstrapAdmin ?? Archebase_Auth_V1_User()}
-    set {_bootstrapAdmin = newValue}
+    get {_storage._bootstrapAdmin ?? Archebase_Auth_V1_User()}
+    set {_uniqueStorage()._bootstrapAdmin = newValue}
   }
   /// Returns true if `bootstrapAdmin` has been explicitly set.
-  public var hasBootstrapAdmin: Bool {self._bootstrapAdmin != nil}
+  public var hasBootstrapAdmin: Bool {_storage._bootstrapAdmin != nil}
   /// Clears the value of `bootstrapAdmin`. Subsequent reads from it will return its default value.
-  public mutating func clearBootstrapAdmin() {self._bootstrapAdmin = nil}
+  public mutating func clearBootstrapAdmin() {_uniqueStorage()._bootstrapAdmin = nil}
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
-  fileprivate var _organization: Archebase_Auth_V1_Organization? = nil
-  fileprivate var _bootstrapAdmin: Archebase_Auth_V1_User? = nil
+  fileprivate var _storage = _StorageClass.defaultInstance
 }
 
 public struct Archebase_Auth_V1_GetOrganizationRequest: Sendable {
@@ -1107,6 +1198,12 @@ public struct Archebase_Auth_V1_CreateUserRequest: Sendable {
 
   public var role: Archebase_Auth_V1_UserRole = .unspecified
 
+  /// Required for HUMAN users; service accounts carry
+  /// USER_CLASS_UNSPECIFIED implicitly. Server validates the
+  /// (role, account_kind, user_class) tuple per
+  /// docs/design/abac-design.md §3.3.
+  public var userClass: Archebase_Auth_V1_UserClass = .unspecified
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -1213,12 +1310,26 @@ public struct Archebase_Auth_V1_UpdateUserRequest: Sendable {
   /// Clears the value of `role`. Subsequent reads from it will return its default value.
   public mutating func clearRole() {self._role = nil}
 
+  /// Optional: change the business identity. Server rejects the
+  /// update if the resulting (role, account_kind, user_class) tuple
+  /// violates the consistency constraints in
+  /// docs/design/abac-design.md §3.3.
+  public var userClass: Archebase_Auth_V1_UserClass {
+    get {_userClass ?? .unspecified}
+    set {_userClass = newValue}
+  }
+  /// Returns true if `userClass` has been explicitly set.
+  public var hasUserClass: Bool {self._userClass != nil}
+  /// Clears the value of `userClass`. Subsequent reads from it will return its default value.
+  public mutating func clearUserClass() {self._userClass = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
   fileprivate var _password: String? = nil
   fileprivate var _role: Archebase_Auth_V1_UserRole? = nil
+  fileprivate var _userClass: Archebase_Auth_V1_UserClass? = nil
 }
 
 public struct Archebase_Auth_V1_UpdateUserResponse: Sendable {
@@ -1270,6 +1381,10 @@ fileprivate let _protobuf_package = "archebase.auth.v1"
 
 extension Archebase_Auth_V1_UserRole: SwiftProtobuf._ProtoNameProviding {
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0USER_ROLE_UNSPECIFIED\0\u{1}USER_ROLE_ADMINISTRATORS\0\u{1}USER_ROLE_NORMAL_USERS\0")
+}
+
+extension Archebase_Auth_V1_UserClass: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0USER_CLASS_UNSPECIFIED\0\u{1}USER_CLASS_SYSTEM_ADMIN\0\u{1}USER_CLASS_ORG_ADMIN\0\u{1}USER_CLASS_ANNOTATOR\0\u{1}USER_CLASS_REVIEWER\0\u{1}USER_CLASS_VIEWER\0")
 }
 
 extension Archebase_Auth_V1_AuthErrorCode: SwiftProtobuf._ProtoNameProviding {
@@ -1400,56 +1515,102 @@ extension Archebase_Auth_V1_LoginResponse: SwiftProtobuf.Message, SwiftProtobuf.
   public static let protoMessageName: String = _protobuf_package + ".LoginResponse"
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}access_token\0\u{3}access_token_expires_at_unix\0\u{3}refresh_token\0\u{3}refresh_token_expires_at_unix\0\u{3}token_type\0\u{1}user\0")
 
+  fileprivate class _StorageClass {
+    var _accessToken: String = String()
+    var _accessTokenExpiresAtUnix: Int64 = 0
+    var _refreshToken: String = String()
+    var _refreshTokenExpiresAtUnix: Int64 = 0
+    var _tokenType: String = String()
+    var _user: Archebase_Auth_V1_User? = nil
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _accessToken = source._accessToken
+      _accessTokenExpiresAtUnix = source._accessTokenExpiresAtUnix
+      _refreshToken = source._refreshToken
+      _refreshTokenExpiresAtUnix = source._refreshTokenExpiresAtUnix
+      _tokenType = source._tokenType
+      _user = source._user
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
+
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
-    while let fieldNumber = try decoder.nextFieldNumber() {
-      // The use of inline closures is to circumvent an issue where the compiler
-      // allocates stack space for every case branch when no optimizations are
-      // enabled. https://github.com/apple/swift-protobuf/issues/1034
-      switch fieldNumber {
-      case 1: try { try decoder.decodeSingularStringField(value: &self.accessToken) }()
-      case 2: try { try decoder.decodeSingularInt64Field(value: &self.accessTokenExpiresAtUnix) }()
-      case 3: try { try decoder.decodeSingularStringField(value: &self.refreshToken) }()
-      case 4: try { try decoder.decodeSingularInt64Field(value: &self.refreshTokenExpiresAtUnix) }()
-      case 5: try { try decoder.decodeSingularStringField(value: &self.tokenType) }()
-      case 6: try { try decoder.decodeSingularMessageField(value: &self._user) }()
-      default: break
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularStringField(value: &_storage._accessToken) }()
+        case 2: try { try decoder.decodeSingularInt64Field(value: &_storage._accessTokenExpiresAtUnix) }()
+        case 3: try { try decoder.decodeSingularStringField(value: &_storage._refreshToken) }()
+        case 4: try { try decoder.decodeSingularInt64Field(value: &_storage._refreshTokenExpiresAtUnix) }()
+        case 5: try { try decoder.decodeSingularStringField(value: &_storage._tokenType) }()
+        case 6: try { try decoder.decodeSingularMessageField(value: &_storage._user) }()
+        default: break
+        }
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    // The use of inline closures is to circumvent an issue where the compiler
-    // allocates stack space for every if/case branch local when no optimizations
-    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
-    // https://github.com/apple/swift-protobuf/issues/1182
-    if !self.accessToken.isEmpty {
-      try visitor.visitSingularStringField(value: self.accessToken, fieldNumber: 1)
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
+      if !_storage._accessToken.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._accessToken, fieldNumber: 1)
+      }
+      if _storage._accessTokenExpiresAtUnix != 0 {
+        try visitor.visitSingularInt64Field(value: _storage._accessTokenExpiresAtUnix, fieldNumber: 2)
+      }
+      if !_storage._refreshToken.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._refreshToken, fieldNumber: 3)
+      }
+      if _storage._refreshTokenExpiresAtUnix != 0 {
+        try visitor.visitSingularInt64Field(value: _storage._refreshTokenExpiresAtUnix, fieldNumber: 4)
+      }
+      if !_storage._tokenType.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._tokenType, fieldNumber: 5)
+      }
+      try { if let v = _storage._user {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 6)
+      } }()
     }
-    if self.accessTokenExpiresAtUnix != 0 {
-      try visitor.visitSingularInt64Field(value: self.accessTokenExpiresAtUnix, fieldNumber: 2)
-    }
-    if !self.refreshToken.isEmpty {
-      try visitor.visitSingularStringField(value: self.refreshToken, fieldNumber: 3)
-    }
-    if self.refreshTokenExpiresAtUnix != 0 {
-      try visitor.visitSingularInt64Field(value: self.refreshTokenExpiresAtUnix, fieldNumber: 4)
-    }
-    if !self.tokenType.isEmpty {
-      try visitor.visitSingularStringField(value: self.tokenType, fieldNumber: 5)
-    }
-    try { if let v = self._user {
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 6)
-    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Archebase_Auth_V1_LoginResponse, rhs: Archebase_Auth_V1_LoginResponse) -> Bool {
-    if lhs.accessToken != rhs.accessToken {return false}
-    if lhs.accessTokenExpiresAtUnix != rhs.accessTokenExpiresAtUnix {return false}
-    if lhs.refreshToken != rhs.refreshToken {return false}
-    if lhs.refreshTokenExpiresAtUnix != rhs.refreshTokenExpiresAtUnix {return false}
-    if lhs.tokenType != rhs.tokenType {return false}
-    if lhs._user != rhs._user {return false}
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._accessToken != rhs_storage._accessToken {return false}
+        if _storage._accessTokenExpiresAtUnix != rhs_storage._accessTokenExpiresAtUnix {return false}
+        if _storage._refreshToken != rhs_storage._refreshToken {return false}
+        if _storage._refreshTokenExpiresAtUnix != rhs_storage._refreshTokenExpiresAtUnix {return false}
+        if _storage._tokenType != rhs_storage._tokenType {return false}
+        if _storage._user != rhs_storage._user {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -1489,56 +1650,102 @@ extension Archebase_Auth_V1_RefreshTokenResponse: SwiftProtobuf.Message, SwiftPr
   public static let protoMessageName: String = _protobuf_package + ".RefreshTokenResponse"
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}access_token\0\u{3}access_token_expires_at_unix\0\u{3}refresh_token\0\u{3}refresh_token_expires_at_unix\0\u{3}token_type\0\u{1}user\0")
 
+  fileprivate class _StorageClass {
+    var _accessToken: String = String()
+    var _accessTokenExpiresAtUnix: Int64 = 0
+    var _refreshToken: String = String()
+    var _refreshTokenExpiresAtUnix: Int64 = 0
+    var _tokenType: String = String()
+    var _user: Archebase_Auth_V1_User? = nil
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _accessToken = source._accessToken
+      _accessTokenExpiresAtUnix = source._accessTokenExpiresAtUnix
+      _refreshToken = source._refreshToken
+      _refreshTokenExpiresAtUnix = source._refreshTokenExpiresAtUnix
+      _tokenType = source._tokenType
+      _user = source._user
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
+
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
-    while let fieldNumber = try decoder.nextFieldNumber() {
-      // The use of inline closures is to circumvent an issue where the compiler
-      // allocates stack space for every case branch when no optimizations are
-      // enabled. https://github.com/apple/swift-protobuf/issues/1034
-      switch fieldNumber {
-      case 1: try { try decoder.decodeSingularStringField(value: &self.accessToken) }()
-      case 2: try { try decoder.decodeSingularInt64Field(value: &self.accessTokenExpiresAtUnix) }()
-      case 3: try { try decoder.decodeSingularStringField(value: &self.refreshToken) }()
-      case 4: try { try decoder.decodeSingularInt64Field(value: &self.refreshTokenExpiresAtUnix) }()
-      case 5: try { try decoder.decodeSingularStringField(value: &self.tokenType) }()
-      case 6: try { try decoder.decodeSingularMessageField(value: &self._user) }()
-      default: break
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularStringField(value: &_storage._accessToken) }()
+        case 2: try { try decoder.decodeSingularInt64Field(value: &_storage._accessTokenExpiresAtUnix) }()
+        case 3: try { try decoder.decodeSingularStringField(value: &_storage._refreshToken) }()
+        case 4: try { try decoder.decodeSingularInt64Field(value: &_storage._refreshTokenExpiresAtUnix) }()
+        case 5: try { try decoder.decodeSingularStringField(value: &_storage._tokenType) }()
+        case 6: try { try decoder.decodeSingularMessageField(value: &_storage._user) }()
+        default: break
+        }
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    // The use of inline closures is to circumvent an issue where the compiler
-    // allocates stack space for every if/case branch local when no optimizations
-    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
-    // https://github.com/apple/swift-protobuf/issues/1182
-    if !self.accessToken.isEmpty {
-      try visitor.visitSingularStringField(value: self.accessToken, fieldNumber: 1)
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
+      if !_storage._accessToken.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._accessToken, fieldNumber: 1)
+      }
+      if _storage._accessTokenExpiresAtUnix != 0 {
+        try visitor.visitSingularInt64Field(value: _storage._accessTokenExpiresAtUnix, fieldNumber: 2)
+      }
+      if !_storage._refreshToken.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._refreshToken, fieldNumber: 3)
+      }
+      if _storage._refreshTokenExpiresAtUnix != 0 {
+        try visitor.visitSingularInt64Field(value: _storage._refreshTokenExpiresAtUnix, fieldNumber: 4)
+      }
+      if !_storage._tokenType.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._tokenType, fieldNumber: 5)
+      }
+      try { if let v = _storage._user {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 6)
+      } }()
     }
-    if self.accessTokenExpiresAtUnix != 0 {
-      try visitor.visitSingularInt64Field(value: self.accessTokenExpiresAtUnix, fieldNumber: 2)
-    }
-    if !self.refreshToken.isEmpty {
-      try visitor.visitSingularStringField(value: self.refreshToken, fieldNumber: 3)
-    }
-    if self.refreshTokenExpiresAtUnix != 0 {
-      try visitor.visitSingularInt64Field(value: self.refreshTokenExpiresAtUnix, fieldNumber: 4)
-    }
-    if !self.tokenType.isEmpty {
-      try visitor.visitSingularStringField(value: self.tokenType, fieldNumber: 5)
-    }
-    try { if let v = self._user {
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 6)
-    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Archebase_Auth_V1_RefreshTokenResponse, rhs: Archebase_Auth_V1_RefreshTokenResponse) -> Bool {
-    if lhs.accessToken != rhs.accessToken {return false}
-    if lhs.accessTokenExpiresAtUnix != rhs.accessTokenExpiresAtUnix {return false}
-    if lhs.refreshToken != rhs.refreshToken {return false}
-    if lhs.refreshTokenExpiresAtUnix != rhs.refreshTokenExpiresAtUnix {return false}
-    if lhs.tokenType != rhs.tokenType {return false}
-    if lhs._user != rhs._user {return false}
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._accessToken != rhs_storage._accessToken {return false}
+        if _storage._accessTokenExpiresAtUnix != rhs_storage._accessTokenExpiresAtUnix {return false}
+        if _storage._refreshToken != rhs_storage._refreshToken {return false}
+        if _storage._refreshTokenExpiresAtUnix != rhs_storage._refreshTokenExpiresAtUnix {return false}
+        if _storage._tokenType != rhs_storage._tokenType {return false}
+        if _storage._user != rhs_storage._user {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -1626,7 +1833,7 @@ extension Archebase_Auth_V1_ExchangeSystemCredentialResponse: SwiftProtobuf.Mess
 
 extension Archebase_Auth_V1_User: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".User"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}organization\0\u{3}user_name\0\u{1}role\0\u{3}last_login_at\0\u{3}created_at\0\u{3}updated_at\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}organization\0\u{3}user_name\0\u{1}role\0\u{3}last_login_at\0\u{3}created_at\0\u{3}updated_at\0\u{3}user_class\0\u{3}organization_id\0\u{3}user_id\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1640,6 +1847,9 @@ extension Archebase_Auth_V1_User: SwiftProtobuf.Message, SwiftProtobuf._MessageI
       case 4: try { try decoder.decodeSingularMessageField(value: &self._lastLoginAt) }()
       case 5: try { try decoder.decodeSingularMessageField(value: &self._createdAt) }()
       case 6: try { try decoder.decodeSingularMessageField(value: &self._updatedAt) }()
+      case 7: try { try decoder.decodeSingularEnumField(value: &self.userClass) }()
+      case 8: try { try decoder.decodeSingularInt64Field(value: &self.organizationID) }()
+      case 9: try { try decoder.decodeSingularInt64Field(value: &self.userID) }()
       default: break
       }
     }
@@ -1668,6 +1878,15 @@ extension Archebase_Auth_V1_User: SwiftProtobuf.Message, SwiftProtobuf._MessageI
     try { if let v = self._updatedAt {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 6)
     } }()
+    if self.userClass != .unspecified {
+      try visitor.visitSingularEnumField(value: self.userClass, fieldNumber: 7)
+    }
+    if self.organizationID != 0 {
+      try visitor.visitSingularInt64Field(value: self.organizationID, fieldNumber: 8)
+    }
+    if self.userID != 0 {
+      try visitor.visitSingularInt64Field(value: self.userID, fieldNumber: 9)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -1678,6 +1897,9 @@ extension Archebase_Auth_V1_User: SwiftProtobuf.Message, SwiftProtobuf._MessageI
     if lhs._lastLoginAt != rhs._lastLoginAt {return false}
     if lhs._createdAt != rhs._createdAt {return false}
     if lhs._updatedAt != rhs._updatedAt {return false}
+    if lhs.userClass != rhs.userClass {return false}
+    if lhs.organizationID != rhs.organizationID {return false}
+    if lhs.userID != rhs.userID {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -2839,36 +3061,74 @@ extension Archebase_Auth_V1_CreateOrganizationResponse: SwiftProtobuf.Message, S
   public static let protoMessageName: String = _protobuf_package + ".CreateOrganizationResponse"
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}organization\0\u{3}bootstrap_admin\0")
 
+  fileprivate class _StorageClass {
+    var _organization: Archebase_Auth_V1_Organization? = nil
+    var _bootstrapAdmin: Archebase_Auth_V1_User? = nil
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _organization = source._organization
+      _bootstrapAdmin = source._bootstrapAdmin
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
+
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
-    while let fieldNumber = try decoder.nextFieldNumber() {
-      // The use of inline closures is to circumvent an issue where the compiler
-      // allocates stack space for every case branch when no optimizations are
-      // enabled. https://github.com/apple/swift-protobuf/issues/1034
-      switch fieldNumber {
-      case 1: try { try decoder.decodeSingularMessageField(value: &self._organization) }()
-      case 2: try { try decoder.decodeSingularMessageField(value: &self._bootstrapAdmin) }()
-      default: break
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularMessageField(value: &_storage._organization) }()
+        case 2: try { try decoder.decodeSingularMessageField(value: &_storage._bootstrapAdmin) }()
+        default: break
+        }
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    // The use of inline closures is to circumvent an issue where the compiler
-    // allocates stack space for every if/case branch local when no optimizations
-    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
-    // https://github.com/apple/swift-protobuf/issues/1182
-    try { if let v = self._organization {
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
-    } }()
-    try { if let v = self._bootstrapAdmin {
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
-    } }()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
+      try { if let v = _storage._organization {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+      } }()
+      try { if let v = _storage._bootstrapAdmin {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+      } }()
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Archebase_Auth_V1_CreateOrganizationResponse, rhs: Archebase_Auth_V1_CreateOrganizationResponse) -> Bool {
-    if lhs._organization != rhs._organization {return false}
-    if lhs._bootstrapAdmin != rhs._bootstrapAdmin {return false}
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._organization != rhs_storage._organization {return false}
+        if _storage._bootstrapAdmin != rhs_storage._bootstrapAdmin {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -3111,7 +3371,7 @@ extension Archebase_Auth_V1_DeleteOrganizationResponse: SwiftProtobuf.Message, S
 
 extension Archebase_Auth_V1_CreateUserRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".CreateUserRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}user_name\0\u{1}password\0\u{1}role\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}user_name\0\u{1}password\0\u{1}role\0\u{3}user_class\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -3122,6 +3382,7 @@ extension Archebase_Auth_V1_CreateUserRequest: SwiftProtobuf.Message, SwiftProto
       case 1: try { try decoder.decodeSingularStringField(value: &self.userName) }()
       case 2: try { try decoder.decodeSingularStringField(value: &self.password) }()
       case 3: try { try decoder.decodeSingularEnumField(value: &self.role) }()
+      case 4: try { try decoder.decodeSingularEnumField(value: &self.userClass) }()
       default: break
       }
     }
@@ -3137,6 +3398,9 @@ extension Archebase_Auth_V1_CreateUserRequest: SwiftProtobuf.Message, SwiftProto
     if self.role != .unspecified {
       try visitor.visitSingularEnumField(value: self.role, fieldNumber: 3)
     }
+    if self.userClass != .unspecified {
+      try visitor.visitSingularEnumField(value: self.userClass, fieldNumber: 4)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -3144,6 +3408,7 @@ extension Archebase_Auth_V1_CreateUserRequest: SwiftProtobuf.Message, SwiftProto
     if lhs.userName != rhs.userName {return false}
     if lhs.password != rhs.password {return false}
     if lhs.role != rhs.role {return false}
+    if lhs.userClass != rhs.userClass {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -3298,7 +3563,7 @@ extension Archebase_Auth_V1_ListUsersResponse: SwiftProtobuf.Message, SwiftProto
 
 extension Archebase_Auth_V1_UpdateUserRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".UpdateUserRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}user_name\0\u{1}password\0\u{1}role\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}user_name\0\u{1}password\0\u{1}role\0\u{3}user_class\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -3309,6 +3574,7 @@ extension Archebase_Auth_V1_UpdateUserRequest: SwiftProtobuf.Message, SwiftProto
       case 1: try { try decoder.decodeSingularStringField(value: &self.userName) }()
       case 2: try { try decoder.decodeSingularStringField(value: &self._password) }()
       case 3: try { try decoder.decodeSingularEnumField(value: &self._role) }()
+      case 4: try { try decoder.decodeSingularEnumField(value: &self._userClass) }()
       default: break
       }
     }
@@ -3328,6 +3594,9 @@ extension Archebase_Auth_V1_UpdateUserRequest: SwiftProtobuf.Message, SwiftProto
     try { if let v = self._role {
       try visitor.visitSingularEnumField(value: v, fieldNumber: 3)
     } }()
+    try { if let v = self._userClass {
+      try visitor.visitSingularEnumField(value: v, fieldNumber: 4)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -3335,6 +3604,7 @@ extension Archebase_Auth_V1_UpdateUserRequest: SwiftProtobuf.Message, SwiftProto
     if lhs.userName != rhs.userName {return false}
     if lhs._password != rhs._password {return false}
     if lhs._role != rhs._role {return false}
+    if lhs._userClass != rhs._userClass {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

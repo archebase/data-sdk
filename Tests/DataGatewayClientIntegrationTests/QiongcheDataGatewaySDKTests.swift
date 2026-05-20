@@ -1,4 +1,5 @@
 import DGWControlPlane
+import DGWProto
 import DGWStore
 import Foundation
 import GRPCCore
@@ -111,6 +112,63 @@ import Testing
 
 @Test func qiongcheDefaultDeviceProvisionerCanBeConstructedWithoutLocalFiles() {
     _ = DefaultQiongcheDeviceProvisioner()
+}
+
+@Test func qiongcheDefaultDeviceProvisionerDoesNotReinitWhenInitSucceeds() async throws {
+    let transport = SequencedDeviceInitTransport(outcomes: [
+        .success(deviceInitResponse(apiKey: "credential-v1", tags: ["device": "robot"])),
+    ])
+    let provisioner = DefaultQiongcheDeviceProvisioner(makeTransport: { endpoint, tls, timeout in
+        #expect(endpoint == URL(string: "https://init.example.com:443")!)
+        #expect(tls == .tls)
+        #expect(timeout == .seconds(7))
+        return QiongcheDeviceInitTransportHandle(serviceClient: transport, shutdown: {})
+    })
+
+    let config = try await provisioner.initDevice(
+        deviceID: "robot-001",
+        deviceInitEndpoint: URL(string: "https://init.example.com:443")!,
+        tls: .tls,
+        timeout: .seconds(7)
+    )
+
+    #expect(config == (try ArchebaseConfig(apiKey: "credential-v1", tags: ["device": "robot"])))
+    #expect(await transport.methods() == [.initDevice])
+}
+
+@Test func qiongcheSaveConfigAndInitFallsBackToReinitWhenAlreadyInitialized() async throws {
+    let root = try qiongcheTemporaryRoot()
+    let paths = try QiongcheSDKPaths(rootURL: root)
+    let reinitResponse = deviceInitResponse(apiKey: "credential-v2", tags: ["device": "robot-reinit"])
+    let transport = SequencedDeviceInitTransport(outcomes: [
+        .failure(.gatewayFailed(
+            statusCode: 9,
+            detailCode: DeviceInitGatewayDetailCode.alreadyInitialized,
+            message: "device has already been initialized"
+        )),
+        .success(reinitResponse),
+    ])
+    let provisioner = DefaultQiongcheDeviceProvisioner(makeTransport: { _, _, _ in
+        QiongcheDeviceInitTransportHandle(serviceClient: transport, shutdown: {})
+    })
+    let sdk = try QiongcheDataGatewaySDK(
+        rootURL: root,
+        deviceProvisioner: provisioner,
+        clock: FixedQiongcheSDKClock(date: Date(timeIntervalSince1970: 1_778_840_000))
+    )
+
+    try await sdk.saveConfigAndInit(configString: validQiongcheConfig(deviceID: "robot-001"))
+
+    #expect(await transport.methods() == [.initDevice, .reinitDevice])
+    #expect(try await ArchebaseConfigStore(configURL: paths.configURL).load() == (try ArchebaseConfig(
+        apiKey: "credential-v2",
+        tags: ["device": "robot-reinit"]
+    )))
+    let endpoints = try ArchebasePublicEndpoints.load(endpointsURL: paths.endpointsURL)
+    #expect(endpoints.deviceInit == URL(string: "https://init.example.com:443")!)
+    let state = try QiongcheSDKStateStore(stateURL: paths.stateURL).load()
+    #expect(state.deviceID == "robot-001")
+    #expect(state.initializedAtUnix == 1_778_840_000)
 }
 
 @Test func qiongcheSDKActorDefaultInitSucceedsWithTemporaryRoot() throws {
@@ -491,6 +549,70 @@ private func qiongcheReadySDK(
         readinessProbe: ConfiguredQiongcheProbe(authReachable: authReachable, gatewayReachable: gatewayReachable),
         clock: FixedQiongcheSDKClock(date: Date(timeIntervalSince1970: 1))
     )
+}
+
+private enum SequencedDeviceInitMethod: Sendable, Equatable {
+    case initDevice
+    case reinitDevice
+}
+
+private enum SequencedDeviceInitOutcome: Sendable {
+    case success(Archebase_DataGateway_V1_InitDeviceResponse)
+    case failure(DataGatewayClientError)
+}
+
+private actor SequencedDeviceInitTransport: DeviceInitTransport {
+    private var outcomes: [SequencedDeviceInitOutcome]
+    private var recorded: [SequencedDeviceInitMethod] = []
+
+    init(outcomes: [SequencedDeviceInitOutcome]) {
+        self.outcomes = outcomes
+    }
+
+    func initDevice(
+        deviceID: String,
+        sdkVersion: String,
+        platform: String
+    ) async throws -> Archebase_DataGateway_V1_InitDeviceResponse {
+        _ = (deviceID, sdkVersion, platform)
+        return try self.next(method: .initDevice)
+    }
+
+    func reinitDevice(
+        deviceID: String,
+        sdkVersion: String,
+        platform: String
+    ) async throws -> Archebase_DataGateway_V1_InitDeviceResponse {
+        _ = (deviceID, sdkVersion, platform)
+        return try self.next(method: .reinitDevice)
+    }
+
+    func methods() -> [SequencedDeviceInitMethod] {
+        self.recorded
+    }
+
+    private func next(method: SequencedDeviceInitMethod) throws -> Archebase_DataGateway_V1_InitDeviceResponse {
+        self.recorded.append(method)
+        guard !self.outcomes.isEmpty else {
+            throw DataGatewayClientError.invalidConfiguration("device init test outcome missing")
+        }
+        switch self.outcomes.removeFirst() {
+        case .success(let response):
+            return response
+        case .failure(let error):
+            throw error
+        }
+    }
+}
+
+private func deviceInitResponse(
+    apiKey: String,
+    tags: [String: String] = [:]
+) -> Archebase_DataGateway_V1_InitDeviceResponse {
+    var response = Archebase_DataGateway_V1_InitDeviceResponse()
+    response.apiKey = apiKey
+    response.tags = tags
+    return response
 }
 
 private actor RecordingQiongcheDeviceProvisioner: QiongcheDeviceProvisioning {

@@ -50,12 +50,24 @@ service DataGatewayCopyService {
 // controls and rate limiting are required before exposing it outside controlled
 // environments.
 service DeviceInitService {
-  // Initializes or re-initializes one registered device and returns the upload API key.
+  // Initializes one registered device and returns the upload API key.
   rpc InitDevice(InitDeviceRequest) returns (InitDeviceResponse);
+  // Re-initializes one registered device and returns a rotated upload API key.
+  rpc ReinitDevice(ReinitDeviceRequest) returns (InitDeviceResponse);
 }
 
 // Request sent by SDKs before they have an upload API key.
 message InitDeviceRequest {
+  // Bare platform-assigned device identifier provided by the operator.
+  string device_id = 1;
+  // SDK version reported for operator visibility and diagnostics.
+  string sdk_version = 2;
+  // SDK platform string, for example "ios".
+  string platform = 3;
+}
+
+// Request sent by SDKs when explicitly rotating an existing upload API key.
+message ReinitDeviceRequest {
   // Bare platform-assigned device identifier provided by the operator.
   string device_id = 1;
   // SDK version reported for operator visibility and diagnostics.

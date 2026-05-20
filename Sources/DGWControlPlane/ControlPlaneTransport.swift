@@ -221,6 +221,12 @@ package protocol DeviceInitTransport: Sendable {
         sdkVersion: String,
         platform: String
     ) async throws -> Archebase_DataGateway_V1_InitDeviceResponse
+
+    func reinitDevice(
+        deviceID: String,
+        sdkVersion: String,
+        platform: String
+    ) async throws -> Archebase_DataGateway_V1_InitDeviceResponse
 }
 
 package final class DeviceInitServiceClientTransport<Client: Archebase_DataGateway_V1_DeviceInitService.ClientProtocol>: DeviceInitTransport, @unchecked Sendable {
@@ -244,6 +250,27 @@ package final class DeviceInitServiceClientTransport<Client: Archebase_DataGatew
 
         let options = self.optionsBuilder.make(authorizationHeader: nil)
         let response: ClientResponse<Archebase_DataGateway_V1_InitDeviceResponse> = try await self.client.initDevice(
+            request,
+            metadata: options.metadata,
+            options: options.callOptions,
+            onResponse: { response in response }
+        )
+
+        return try response.message
+    }
+
+    package func reinitDevice(
+        deviceID: String,
+        sdkVersion: String,
+        platform: String
+    ) async throws -> Archebase_DataGateway_V1_InitDeviceResponse {
+        var request = Archebase_DataGateway_V1_ReinitDeviceRequest()
+        request.deviceID = deviceID
+        request.sdkVersion = sdkVersion
+        request.platform = platform
+
+        let options = self.optionsBuilder.make(authorizationHeader: nil)
+        let response: ClientResponse<Archebase_DataGateway_V1_InitDeviceResponse> = try await self.client.reinitDevice(
             request,
             metadata: options.metadata,
             options: options.callOptions,
@@ -421,6 +448,11 @@ public enum DataGatewayClientError: Error, Sendable, Equatable {
     case integrityCheckFailed(String)
     case retryExhausted(lastError: String)
     case cancelled
+}
+
+package enum DeviceInitGatewayDetailCode {
+    package static let alreadyInitialized = "DATA_GATEWAY_DEVICE_ALREADY_INITIALIZED"
+    package static let notInitialized = "DATA_GATEWAY_DEVICE_NOT_INITIALIZED"
 }
 
 package enum ControlPlaneErrorMapper {

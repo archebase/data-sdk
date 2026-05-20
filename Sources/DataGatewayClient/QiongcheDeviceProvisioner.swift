@@ -11,8 +11,31 @@ package protocol QiongcheDeviceProvisioning: Sendable {
     ) async throws -> ArchebaseConfig
 }
 
+package struct QiongcheDeviceInitTransportHandle: Sendable {
+    package let serviceClient: any DeviceInitTransport
+    private let shutdownHandler: @Sendable () -> Void
+
+    package init(
+        serviceClient: any DeviceInitTransport,
+        shutdown: @escaping @Sendable () -> Void
+    ) {
+        self.serviceClient = serviceClient
+        self.shutdownHandler = shutdown
+    }
+
+    package func shutdown() {
+        self.shutdownHandler()
+    }
+}
+
 package struct DefaultQiongcheDeviceProvisioner: QiongcheDeviceProvisioning {
-    package init() {}
+    private let makeTransport: @Sendable (URL, TLSMode, Duration) throws -> QiongcheDeviceInitTransportHandle
+
+    package init(
+        makeTransport: @escaping @Sendable (URL, TLSMode, Duration) throws -> QiongcheDeviceInitTransportHandle = Self.makeDefaultTransport
+    ) {
+        self.makeTransport = makeTransport
+    }
 
     package func initDevice(
         deviceID: String,
@@ -22,6 +45,23 @@ package struct DefaultQiongcheDeviceProvisioner: QiongcheDeviceProvisioning {
     ) async throws -> ArchebaseConfig {
         try DataGatewayClientConfig.validate(endpoint: deviceInitEndpoint, tls: tls, fieldName: "deviceInitEndpoint")
 
+        let transport = try self.makeTransport(deviceInitEndpoint, tls, timeout)
+        defer {
+            transport.shutdown()
+        }
+
+        do {
+            return try await Self.remoteConfig(deviceID: deviceID, transport: transport.serviceClient, mode: .initDevice)
+        } catch let error as DataGatewayClientError where error.isDeviceAlreadyInitialized {
+            return try await Self.remoteConfig(deviceID: deviceID, transport: transport.serviceClient, mode: .reinitDevice)
+        }
+    }
+
+    private static func makeDefaultTransport(
+        deviceInitEndpoint: URL,
+        tls: TLSMode,
+        timeout: Duration
+    ) throws -> QiongcheDeviceInitTransportHandle {
         let security: ControlPlaneTransportSecurity = switch tls {
         case .plaintext: .plaintext
         case .tls: .tls
@@ -34,21 +74,53 @@ package struct DefaultQiongcheDeviceProvisioner: QiongcheDeviceProvisioning {
             )
         )
         let managedTransport = try factory.makeDeviceInitTransport()
-        defer {
-            managedTransport.shutdown()
-        }
+        return QiongcheDeviceInitTransportHandle(
+            serviceClient: managedTransport.serviceClient,
+            shutdown: {
+                managedTransport.shutdown()
+            }
+        )
+    }
 
+    private static func remoteConfig(
+        deviceID: String,
+        transport: any DeviceInitTransport,
+        mode: DeviceInitRemoteMode
+    ) async throws -> ArchebaseConfig {
         do {
-            let response = try await managedTransport.serviceClient.initDevice(
-                deviceID: deviceID,
-                sdkVersion: DataGatewayClientModule.version,
-                platform: "ios"
-            )
+            let response = switch mode {
+            case .initDevice:
+                try await transport.initDevice(
+                    deviceID: deviceID,
+                    sdkVersion: DataGatewayClientModule.version,
+                    platform: "ios"
+                )
+            case .reinitDevice:
+                try await transport.reinitDevice(
+                    deviceID: deviceID,
+                    sdkVersion: DataGatewayClientModule.version,
+                    platform: "ios"
+                )
+            }
             return try ArchebaseConfig(apiKey: response.apiKey, tags: response.tags)
         } catch let error as DataGatewayClientError {
             throw error
         } catch {
             throw ControlPlaneErrorMapper.map(error)
         }
+    }
+}
+
+private enum DeviceInitRemoteMode {
+    case initDevice
+    case reinitDevice
+}
+
+private extension DataGatewayClientError {
+    var isDeviceAlreadyInitialized: Bool {
+        guard case .gatewayFailed(_, let detailCode, _) = self else {
+            return false
+        }
+        return detailCode == DeviceInitGatewayDetailCode.alreadyInitialized
     }
 }

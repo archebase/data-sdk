@@ -112,6 +112,120 @@ public enum Archebase_DataGateway_V1_LogicalUploadStatus: SwiftProtobuf.Enum, Sw
 
 }
 
+/// User-visible aggregate copy job state.
+public enum Archebase_DataGateway_V1_CopyJobStatus: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case queued // = 1
+  case running // = 2
+  case succeeded // = 3
+  case partialFailed // = 4
+  case failed // = 5
+  case canceling // = 6
+  case canceled // = 7
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .queued
+    case 2: self = .running
+    case 3: self = .succeeded
+    case 4: self = .partialFailed
+    case 5: self = .failed
+    case 6: self = .canceling
+    case 7: self = .canceled
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .queued: return 1
+    case .running: return 2
+    case .succeeded: return 3
+    case .partialFailed: return 4
+    case .failed: return 5
+    case .canceling: return 6
+    case .canceled: return 7
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Archebase_DataGateway_V1_CopyJobStatus] = [
+    .unspecified,
+    .queued,
+    .running,
+    .succeeded,
+    .partialFailed,
+    .failed,
+    .canceling,
+    .canceled,
+  ]
+
+}
+
+/// User-visible per-file copy item state.
+public enum Archebase_DataGateway_V1_CopyItemStatus: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case queued // = 1
+  case copying // = 2
+  case succeeded // = 3
+  case failedTerminal // = 4
+  case skipped // = 5
+  case canceled // = 6
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .queued
+    case 2: self = .copying
+    case 3: self = .succeeded
+    case 4: self = .failedTerminal
+    case 5: self = .skipped
+    case 6: self = .canceled
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .queued: return 1
+    case .copying: return 2
+    case .succeeded: return 3
+    case .failedTerminal: return 4
+    case .skipped: return 5
+    case .canceled: return 6
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Archebase_DataGateway_V1_CopyItemStatus] = [
+    .unspecified,
+    .queued,
+    .copying,
+    .succeeded,
+    .failedTerminal,
+    .skipped,
+    .canceled,
+  ]
+
+}
+
 /// Declares the requested presigned access mode.
 public enum Archebase_DataGateway_V1_PresignAccessMode: SwiftProtobuf.Enum, Swift.CaseIterable {
   public typealias RawValue = Int
@@ -219,6 +333,26 @@ public enum Archebase_DataGateway_V1_DataGatewayErrorCode: SwiftProtobuf.Enum, S
 
 /// Request sent by SDKs before they have an upload API key.
 public struct Archebase_DataGateway_V1_InitDeviceRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// Bare platform-assigned device identifier provided by the operator.
+  public var deviceID: String = String()
+
+  /// SDK version reported for operator visibility and diagnostics.
+  public var sdkVersion: String = String()
+
+  /// SDK platform string, for example "ios".
+  public var platform: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// Request sent by SDKs when explicitly rotating an existing upload API key.
+public struct Archebase_DataGateway_V1_ReinitDeviceRequest: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
@@ -464,6 +598,415 @@ public struct Archebase_DataGateway_V1_CompleteUploadResponse: Sendable {
   public init() {}
 }
 
+/// Requests presigned read operations for file IDs.
+public struct Archebase_DataGateway_V1_RequestDownloadRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// Non-empty file IDs. Empty or duplicate IDs are rejected by data-gateway.
+  public var fileIds: [String] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// Contains the presigned read operation for one requested file.
+public struct Archebase_DataGateway_V1_DownloadObjectLocation: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// File ID echoed from the request.
+  public var fileID: String = String()
+
+  /// Presigned GET operation. Clients may add a Range header for ranged reads.
+  public var read: Archebase_DataGateway_V1_PresignedOperation {
+    get {_read ?? Archebase_DataGateway_V1_PresignedOperation()}
+    set {_read = newValue}
+  }
+  /// Returns true if `read` has been explicitly set.
+  public var hasRead: Bool {self._read != nil}
+  /// Clears the value of `read`. Subsequent reads from it will return its default value.
+  public mutating func clearRead() {self._read = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _read: Archebase_DataGateway_V1_PresignedOperation? = nil
+}
+
+/// Returns presigned read operations and client download hints.
+public struct Archebase_DataGateway_V1_RequestDownloadResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// Files in the same order as request.file_ids.
+  public var files: [Archebase_DataGateway_V1_DownloadObjectLocation] = []
+
+  /// Absolute expiration time shared by returned read operations, as Unix seconds.
+  public var expiresAtUnix: Int64 = 0
+
+  /// Client hint for deciding when to use ranged parallel download.
+  public var largeFileThresholdBytes: Int64 = 0
+
+  /// Client hint for ranged GET part size.
+  public var rangePartSizeBytes: Int64 = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// Requests creation of an asynchronous OSS server-side copy job.
+public struct Archebase_DataGateway_V1_CreateCopyJobRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// Non-empty file IDs. Empty or duplicate IDs are rejected by data-gateway.
+  public var fileIds: [String] = []
+
+  /// Destination bucket, endpoint, region, and object key template.
+  public var destination: Archebase_DataGateway_V1_CopyDestination {
+    get {_destination ?? Archebase_DataGateway_V1_CopyDestination()}
+    set {_destination = newValue}
+  }
+  /// Returns true if `destination` has been explicitly set.
+  public var hasDestination: Bool {self._destination != nil}
+  /// Clears the value of `destination`. Subsequent reads from it will return its default value.
+  public mutating func clearDestination() {self._destination = nil}
+
+  /// Optional caller-provided key used to make create retries idempotent.
+  public var idempotencyKey: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _destination: Archebase_DataGateway_V1_CopyDestination? = nil
+}
+
+/// Describes the user-owned destination for copied objects.
+public struct Archebase_DataGateway_V1_CopyDestination: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// Target OSS bucket name.
+  public var bucket: String = String()
+
+  /// Target OSS endpoint used by copy workers.
+  public var endpoint: String = String()
+
+  /// Target OSS region. Server-side copy only supports same-region buckets.
+  public var region: String = String()
+
+  /// Object key template used to render the destination object key for each
+  /// copied file.
+  ///
+  /// Template syntax:
+  /// - Empty or whitespace-only values are normalized to "{file_id}".
+  /// - The only supported variable is "{file_id}".
+  /// - "{file_id}" is replaced by the source file ID from the request.
+  /// - All other text is treated as a literal prefix, suffix, or path segment.
+  /// - Date values are not expanded by data-gateway.
+  /// - Callers that want a date prefix must format it before sending the request.
+  ///
+  /// Examples:
+  /// - "{file_id}" renders "file-a" for file ID "file-a".
+  /// - "exports/{file_id}.bin" renders "exports/file-a.bin".
+  /// - "exports/20260503/{file_id}" appends yyyyMMdd as part of the prefix.
+  /// - For file ID "file-a", that template renders "exports/20260503/file-a".
+  /// - "20260503" is caller-provided literal text.
+  ///
+  /// Safety rules after rendering:
+  /// - The key must be non-empty and relative; it must not start with "/".
+  /// - The key must not contain a ".." path segment.
+  /// - The key must not contain control characters.
+  /// - The rendered UTF-8 byte length must fit the OSS object key limit.
+  /// - Within one CreateCopyJob request, every file ID must render to a unique key.
+  /// - A fixed template such as "latest.bin" is only valid when it cannot collide.
+  public var keyTemplate: String = String()
+
+  /// Optional target cloud account identifier for auditing and diagnostics.
+  public var accountID: String = String()
+
+  /// Optional KMS key ID used when writing destination objects.
+  public var kmsKeyID: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// Returns the identity and initial state of a newly created copy job.
+public struct Archebase_DataGateway_V1_CreateCopyJobResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// Stable job identifier used by all subsequent copy RPCs.
+  public var copyJobID: String = String()
+
+  /// Initial or reused job status.
+  public var status: Archebase_DataGateway_V1_CopyJobStatus = .unspecified
+
+  /// Total number of file IDs accepted into the job.
+  public var totalItems: Int32 = 0
+
+  /// Sum of known source file sizes, in bytes.
+  public var estimatedTotalBytes: Int64 = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// Requests the aggregate state of one copy job.
+public struct Archebase_DataGateway_V1_GetCopyJobRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// Stable copy job identifier returned by CreateCopyJob.
+  public var copyJobID: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// Returns the aggregate state of one copy job.
+public struct Archebase_DataGateway_V1_GetCopyJobResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// Current job view.
+  public var job: Archebase_DataGateway_V1_CopyJobView {
+    get {_job ?? Archebase_DataGateway_V1_CopyJobView()}
+    set {_job = newValue}
+  }
+  /// Returns true if `job` has been explicitly set.
+  public var hasJob: Bool {self._job != nil}
+  /// Clears the value of `job`. Subsequent reads from it will return its default value.
+  public mutating func clearJob() {self._job = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _job: Archebase_DataGateway_V1_CopyJobView? = nil
+}
+
+/// User-visible aggregate state for one copy job.
+public struct Archebase_DataGateway_V1_CopyJobView: @unchecked Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// Stable copy job identifier.
+  public var copyJobID: String {
+    get {_storage._copyJobID}
+    set {_uniqueStorage()._copyJobID = newValue}
+  }
+
+  /// Current aggregate status.
+  public var status: Archebase_DataGateway_V1_CopyJobStatus {
+    get {_storage._status}
+    set {_uniqueStorage()._status = newValue}
+  }
+
+  /// Destination selected at create time.
+  public var destination: Archebase_DataGateway_V1_CopyDestination {
+    get {_storage._destination ?? Archebase_DataGateway_V1_CopyDestination()}
+    set {_uniqueStorage()._destination = newValue}
+  }
+  /// Returns true if `destination` has been explicitly set.
+  public var hasDestination: Bool {_storage._destination != nil}
+  /// Clears the value of `destination`. Subsequent reads from it will return its default value.
+  public mutating func clearDestination() {_uniqueStorage()._destination = nil}
+
+  /// Total number of items in the job.
+  public var totalItems: Int32 {
+    get {_storage._totalItems}
+    set {_uniqueStorage()._totalItems = newValue}
+  }
+
+  /// Number of items that finished successfully.
+  public var completedItems: Int32 {
+    get {_storage._completedItems}
+    set {_uniqueStorage()._completedItems = newValue}
+  }
+
+  /// Number of terminally failed items.
+  public var failedItems: Int32 {
+    get {_storage._failedItems}
+    set {_uniqueStorage()._failedItems = newValue}
+  }
+
+  /// Number of items skipped by overwrite policy.
+  public var skippedItems: Int32 {
+    get {_storage._skippedItems}
+    set {_uniqueStorage()._skippedItems = newValue}
+  }
+
+  /// Total source bytes planned for the job.
+  public var totalBytes: Int64 {
+    get {_storage._totalBytes}
+    set {_uniqueStorage()._totalBytes = newValue}
+  }
+
+  /// Bytes confirmed copied or skipped so far.
+  public var copiedBytes: Int64 {
+    get {_storage._copiedBytes}
+    set {_uniqueStorage()._copiedBytes = newValue}
+  }
+
+  /// Unix seconds when the job was created.
+  public var createdAtUnix: Int64 {
+    get {_storage._createdAtUnix}
+    set {_uniqueStorage()._createdAtUnix = newValue}
+  }
+
+  /// Unix seconds when execution first started, or zero if not started.
+  public var startedAtUnix: Int64 {
+    get {_storage._startedAtUnix}
+    set {_uniqueStorage()._startedAtUnix = newValue}
+  }
+
+  /// Unix seconds when the job reached a terminal state, or zero otherwise.
+  public var finishedAtUnix: Int64 {
+    get {_storage._finishedAtUnix}
+    set {_uniqueStorage()._finishedAtUnix = newValue}
+  }
+
+  /// Terminal or job-level failure reason, if any.
+  public var terminalReason: String {
+    get {_storage._terminalReason}
+    set {_uniqueStorage()._terminalReason = newValue}
+  }
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _storage = _StorageClass.defaultInstance
+}
+
+/// Requests item-level copy state for one job.
+public struct Archebase_DataGateway_V1_ListCopyJobItemsRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// Stable copy job identifier returned by CreateCopyJob.
+  public var copyJobID: String = String()
+
+  /// Optional status filter. Empty means all item statuses.
+  public var statuses: [Archebase_DataGateway_V1_CopyItemStatus] = []
+
+  /// Maximum number of items to return.
+  public var pageSize: Int32 = 0
+
+  /// Opaque token returned by a previous page.
+  public var pageToken: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// User-visible per-file state for one copy item.
+public struct Archebase_DataGateway_V1_CopyJobItemView: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// File ID requested by the user.
+  public var fileID: String = String()
+
+  /// Destination object key rendered from the job key template.
+  public var destinationObjectKey: String = String()
+
+  /// Current item status.
+  public var status: Archebase_DataGateway_V1_CopyItemStatus = .unspecified
+
+  /// Planned source object size, in bytes.
+  public var sourceSize: Int64 = 0
+
+  /// Bytes confirmed copied for this item.
+  public var copiedBytes: Int64 = 0
+
+  /// Stable machine-readable failure code, if any.
+  public var errorCode: String = String()
+
+  /// Redacted human-readable failure message, if any.
+  public var errorMessage: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// Returns one page of copy job items.
+public struct Archebase_DataGateway_V1_ListCopyJobItemsResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// Copy items in page order.
+  public var items: [Archebase_DataGateway_V1_CopyJobItemView] = []
+
+  /// Opaque token for the next page, or empty when no more pages exist.
+  public var nextPageToken: String = String()
+
+  /// Total number of items matching the filter.
+  public var totalSize: Int32 = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// Requests cancellation of one copy job.
+public struct Archebase_DataGateway_V1_CancelCopyJobRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// Stable copy job identifier returned by CreateCopyJob.
+  public var copyJobID: String = String()
+
+  /// Optional operator or user reason recorded in job audit fields.
+  public var reason: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// Returns the state after a cancel request is accepted.
+public struct Archebase_DataGateway_V1_CancelCopyJobResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// Stable copy job identifier.
+  public var copyJobID: String = String()
+
+  /// Status after cancellation was requested.
+  public var status: Archebase_DataGateway_V1_CopyJobStatus = .unspecified
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
 /// Identifies an object within the configured OSS bucket.
 public struct Archebase_DataGateway_V1_StorageObject: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
@@ -590,6 +1133,14 @@ extension Archebase_DataGateway_V1_LogicalUploadStatus: SwiftProtobuf._ProtoName
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0LOGICAL_UPLOAD_STATUS_UNSPECIFIED\0\u{1}LOGICAL_UPLOAD_STATUS_ACTIVE\0\u{1}LOGICAL_UPLOAD_STATUS_COMPLETING\0\u{1}LOGICAL_UPLOAD_STATUS_COMPLETED\0\u{1}LOGICAL_UPLOAD_STATUS_TERMINAL\0")
 }
 
+extension Archebase_DataGateway_V1_CopyJobStatus: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0COPY_JOB_STATUS_UNSPECIFIED\0\u{1}COPY_JOB_STATUS_QUEUED\0\u{1}COPY_JOB_STATUS_RUNNING\0\u{1}COPY_JOB_STATUS_SUCCEEDED\0\u{1}COPY_JOB_STATUS_PARTIAL_FAILED\0\u{1}COPY_JOB_STATUS_FAILED\0\u{1}COPY_JOB_STATUS_CANCELING\0\u{1}COPY_JOB_STATUS_CANCELED\0")
+}
+
+extension Archebase_DataGateway_V1_CopyItemStatus: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0COPY_ITEM_STATUS_UNSPECIFIED\0\u{1}COPY_ITEM_STATUS_QUEUED\0\u{1}COPY_ITEM_STATUS_COPYING\0\u{1}COPY_ITEM_STATUS_SUCCEEDED\0\u{1}COPY_ITEM_STATUS_FAILED_TERMINAL\0\u{1}COPY_ITEM_STATUS_SKIPPED\0\u{1}COPY_ITEM_STATUS_CANCELED\0")
+}
+
 extension Archebase_DataGateway_V1_PresignAccessMode: SwiftProtobuf._ProtoNameProviding {
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0PRESIGN_ACCESS_MODE_UNSPECIFIED\0\u{1}PRESIGN_ACCESS_MODE_READ\0\u{1}PRESIGN_ACCESS_MODE_WRITE\0\u{1}PRESIGN_ACCESS_MODE_READ_WRITE\0")
 }
@@ -630,6 +1181,46 @@ extension Archebase_DataGateway_V1_InitDeviceRequest: SwiftProtobuf.Message, Swi
   }
 
   public static func ==(lhs: Archebase_DataGateway_V1_InitDeviceRequest, rhs: Archebase_DataGateway_V1_InitDeviceRequest) -> Bool {
+    if lhs.deviceID != rhs.deviceID {return false}
+    if lhs.sdkVersion != rhs.sdkVersion {return false}
+    if lhs.platform != rhs.platform {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Archebase_DataGateway_V1_ReinitDeviceRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ReinitDeviceRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}device_id\0\u{3}sdk_version\0\u{1}platform\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.deviceID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.sdkVersion) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.platform) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.deviceID.isEmpty {
+      try visitor.visitSingularStringField(value: self.deviceID, fieldNumber: 1)
+    }
+    if !self.sdkVersion.isEmpty {
+      try visitor.visitSingularStringField(value: self.sdkVersion, fieldNumber: 2)
+    }
+    if !self.platform.isEmpty {
+      try visitor.visitSingularStringField(value: self.platform, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Archebase_DataGateway_V1_ReinitDeviceRequest, rhs: Archebase_DataGateway_V1_ReinitDeviceRequest) -> Bool {
     if lhs.deviceID != rhs.deviceID {return false}
     if lhs.sdkVersion != rhs.sdkVersion {return false}
     if lhs.platform != rhs.platform {return false}
@@ -1150,6 +1741,697 @@ extension Archebase_DataGateway_V1_CompleteUploadResponse: SwiftProtobuf.Message
   }
 
   public static func ==(lhs: Archebase_DataGateway_V1_CompleteUploadResponse, rhs: Archebase_DataGateway_V1_CompleteUploadResponse) -> Bool {
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Archebase_DataGateway_V1_RequestDownloadRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".RequestDownloadRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}file_ids\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeRepeatedStringField(value: &self.fileIds) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.fileIds.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.fileIds, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Archebase_DataGateway_V1_RequestDownloadRequest, rhs: Archebase_DataGateway_V1_RequestDownloadRequest) -> Bool {
+    if lhs.fileIds != rhs.fileIds {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Archebase_DataGateway_V1_DownloadObjectLocation: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".DownloadObjectLocation"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}file_id\0\u{1}read\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.fileID) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._read) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.fileID.isEmpty {
+      try visitor.visitSingularStringField(value: self.fileID, fieldNumber: 1)
+    }
+    try { if let v = self._read {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Archebase_DataGateway_V1_DownloadObjectLocation, rhs: Archebase_DataGateway_V1_DownloadObjectLocation) -> Bool {
+    if lhs.fileID != rhs.fileID {return false}
+    if lhs._read != rhs._read {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Archebase_DataGateway_V1_RequestDownloadResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".RequestDownloadResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}files\0\u{3}expires_at_unix\0\u{3}large_file_threshold_bytes\0\u{3}range_part_size_bytes\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeRepeatedMessageField(value: &self.files) }()
+      case 2: try { try decoder.decodeSingularInt64Field(value: &self.expiresAtUnix) }()
+      case 3: try { try decoder.decodeSingularInt64Field(value: &self.largeFileThresholdBytes) }()
+      case 4: try { try decoder.decodeSingularInt64Field(value: &self.rangePartSizeBytes) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.files.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.files, fieldNumber: 1)
+    }
+    if self.expiresAtUnix != 0 {
+      try visitor.visitSingularInt64Field(value: self.expiresAtUnix, fieldNumber: 2)
+    }
+    if self.largeFileThresholdBytes != 0 {
+      try visitor.visitSingularInt64Field(value: self.largeFileThresholdBytes, fieldNumber: 3)
+    }
+    if self.rangePartSizeBytes != 0 {
+      try visitor.visitSingularInt64Field(value: self.rangePartSizeBytes, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Archebase_DataGateway_V1_RequestDownloadResponse, rhs: Archebase_DataGateway_V1_RequestDownloadResponse) -> Bool {
+    if lhs.files != rhs.files {return false}
+    if lhs.expiresAtUnix != rhs.expiresAtUnix {return false}
+    if lhs.largeFileThresholdBytes != rhs.largeFileThresholdBytes {return false}
+    if lhs.rangePartSizeBytes != rhs.rangePartSizeBytes {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Archebase_DataGateway_V1_CreateCopyJobRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CreateCopyJobRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}file_ids\0\u{1}destination\0\u{3}idempotency_key\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeRepeatedStringField(value: &self.fileIds) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._destination) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.idempotencyKey) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.fileIds.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.fileIds, fieldNumber: 1)
+    }
+    try { if let v = self._destination {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
+    if !self.idempotencyKey.isEmpty {
+      try visitor.visitSingularStringField(value: self.idempotencyKey, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Archebase_DataGateway_V1_CreateCopyJobRequest, rhs: Archebase_DataGateway_V1_CreateCopyJobRequest) -> Bool {
+    if lhs.fileIds != rhs.fileIds {return false}
+    if lhs._destination != rhs._destination {return false}
+    if lhs.idempotencyKey != rhs.idempotencyKey {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Archebase_DataGateway_V1_CopyDestination: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CopyDestination"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}bucket\0\u{1}endpoint\0\u{1}region\0\u{3}key_template\0\u{3}account_id\0\u{3}kms_key_id\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.bucket) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.endpoint) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.region) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.keyTemplate) }()
+      case 5: try { try decoder.decodeSingularStringField(value: &self.accountID) }()
+      case 6: try { try decoder.decodeSingularStringField(value: &self.kmsKeyID) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.bucket.isEmpty {
+      try visitor.visitSingularStringField(value: self.bucket, fieldNumber: 1)
+    }
+    if !self.endpoint.isEmpty {
+      try visitor.visitSingularStringField(value: self.endpoint, fieldNumber: 2)
+    }
+    if !self.region.isEmpty {
+      try visitor.visitSingularStringField(value: self.region, fieldNumber: 3)
+    }
+    if !self.keyTemplate.isEmpty {
+      try visitor.visitSingularStringField(value: self.keyTemplate, fieldNumber: 4)
+    }
+    if !self.accountID.isEmpty {
+      try visitor.visitSingularStringField(value: self.accountID, fieldNumber: 5)
+    }
+    if !self.kmsKeyID.isEmpty {
+      try visitor.visitSingularStringField(value: self.kmsKeyID, fieldNumber: 6)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Archebase_DataGateway_V1_CopyDestination, rhs: Archebase_DataGateway_V1_CopyDestination) -> Bool {
+    if lhs.bucket != rhs.bucket {return false}
+    if lhs.endpoint != rhs.endpoint {return false}
+    if lhs.region != rhs.region {return false}
+    if lhs.keyTemplate != rhs.keyTemplate {return false}
+    if lhs.accountID != rhs.accountID {return false}
+    if lhs.kmsKeyID != rhs.kmsKeyID {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Archebase_DataGateway_V1_CreateCopyJobResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CreateCopyJobResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}copy_job_id\0\u{1}status\0\u{3}total_items\0\u{3}estimated_total_bytes\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.copyJobID) }()
+      case 2: try { try decoder.decodeSingularEnumField(value: &self.status) }()
+      case 3: try { try decoder.decodeSingularInt32Field(value: &self.totalItems) }()
+      case 4: try { try decoder.decodeSingularInt64Field(value: &self.estimatedTotalBytes) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.copyJobID.isEmpty {
+      try visitor.visitSingularStringField(value: self.copyJobID, fieldNumber: 1)
+    }
+    if self.status != .unspecified {
+      try visitor.visitSingularEnumField(value: self.status, fieldNumber: 2)
+    }
+    if self.totalItems != 0 {
+      try visitor.visitSingularInt32Field(value: self.totalItems, fieldNumber: 3)
+    }
+    if self.estimatedTotalBytes != 0 {
+      try visitor.visitSingularInt64Field(value: self.estimatedTotalBytes, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Archebase_DataGateway_V1_CreateCopyJobResponse, rhs: Archebase_DataGateway_V1_CreateCopyJobResponse) -> Bool {
+    if lhs.copyJobID != rhs.copyJobID {return false}
+    if lhs.status != rhs.status {return false}
+    if lhs.totalItems != rhs.totalItems {return false}
+    if lhs.estimatedTotalBytes != rhs.estimatedTotalBytes {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Archebase_DataGateway_V1_GetCopyJobRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".GetCopyJobRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}copy_job_id\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.copyJobID) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.copyJobID.isEmpty {
+      try visitor.visitSingularStringField(value: self.copyJobID, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Archebase_DataGateway_V1_GetCopyJobRequest, rhs: Archebase_DataGateway_V1_GetCopyJobRequest) -> Bool {
+    if lhs.copyJobID != rhs.copyJobID {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Archebase_DataGateway_V1_GetCopyJobResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".GetCopyJobResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}job\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._job) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._job {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Archebase_DataGateway_V1_GetCopyJobResponse, rhs: Archebase_DataGateway_V1_GetCopyJobResponse) -> Bool {
+    if lhs._job != rhs._job {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Archebase_DataGateway_V1_CopyJobView: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CopyJobView"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}copy_job_id\0\u{1}status\0\u{1}destination\0\u{3}total_items\0\u{3}completed_items\0\u{3}failed_items\0\u{3}skipped_items\0\u{3}total_bytes\0\u{3}copied_bytes\0\u{3}created_at_unix\0\u{3}started_at_unix\0\u{3}finished_at_unix\0\u{3}terminal_reason\0")
+
+  fileprivate class _StorageClass {
+    var _copyJobID: String = String()
+    var _status: Archebase_DataGateway_V1_CopyJobStatus = .unspecified
+    var _destination: Archebase_DataGateway_V1_CopyDestination? = nil
+    var _totalItems: Int32 = 0
+    var _completedItems: Int32 = 0
+    var _failedItems: Int32 = 0
+    var _skippedItems: Int32 = 0
+    var _totalBytes: Int64 = 0
+    var _copiedBytes: Int64 = 0
+    var _createdAtUnix: Int64 = 0
+    var _startedAtUnix: Int64 = 0
+    var _finishedAtUnix: Int64 = 0
+    var _terminalReason: String = String()
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _copyJobID = source._copyJobID
+      _status = source._status
+      _destination = source._destination
+      _totalItems = source._totalItems
+      _completedItems = source._completedItems
+      _failedItems = source._failedItems
+      _skippedItems = source._skippedItems
+      _totalBytes = source._totalBytes
+      _copiedBytes = source._copiedBytes
+      _createdAtUnix = source._createdAtUnix
+      _startedAtUnix = source._startedAtUnix
+      _finishedAtUnix = source._finishedAtUnix
+      _terminalReason = source._terminalReason
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularStringField(value: &_storage._copyJobID) }()
+        case 2: try { try decoder.decodeSingularEnumField(value: &_storage._status) }()
+        case 3: try { try decoder.decodeSingularMessageField(value: &_storage._destination) }()
+        case 4: try { try decoder.decodeSingularInt32Field(value: &_storage._totalItems) }()
+        case 5: try { try decoder.decodeSingularInt32Field(value: &_storage._completedItems) }()
+        case 6: try { try decoder.decodeSingularInt32Field(value: &_storage._failedItems) }()
+        case 7: try { try decoder.decodeSingularInt32Field(value: &_storage._skippedItems) }()
+        case 8: try { try decoder.decodeSingularInt64Field(value: &_storage._totalBytes) }()
+        case 9: try { try decoder.decodeSingularInt64Field(value: &_storage._copiedBytes) }()
+        case 10: try { try decoder.decodeSingularInt64Field(value: &_storage._createdAtUnix) }()
+        case 11: try { try decoder.decodeSingularInt64Field(value: &_storage._startedAtUnix) }()
+        case 12: try { try decoder.decodeSingularInt64Field(value: &_storage._finishedAtUnix) }()
+        case 13: try { try decoder.decodeSingularStringField(value: &_storage._terminalReason) }()
+        default: break
+        }
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
+      if !_storage._copyJobID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._copyJobID, fieldNumber: 1)
+      }
+      if _storage._status != .unspecified {
+        try visitor.visitSingularEnumField(value: _storage._status, fieldNumber: 2)
+      }
+      try { if let v = _storage._destination {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+      } }()
+      if _storage._totalItems != 0 {
+        try visitor.visitSingularInt32Field(value: _storage._totalItems, fieldNumber: 4)
+      }
+      if _storage._completedItems != 0 {
+        try visitor.visitSingularInt32Field(value: _storage._completedItems, fieldNumber: 5)
+      }
+      if _storage._failedItems != 0 {
+        try visitor.visitSingularInt32Field(value: _storage._failedItems, fieldNumber: 6)
+      }
+      if _storage._skippedItems != 0 {
+        try visitor.visitSingularInt32Field(value: _storage._skippedItems, fieldNumber: 7)
+      }
+      if _storage._totalBytes != 0 {
+        try visitor.visitSingularInt64Field(value: _storage._totalBytes, fieldNumber: 8)
+      }
+      if _storage._copiedBytes != 0 {
+        try visitor.visitSingularInt64Field(value: _storage._copiedBytes, fieldNumber: 9)
+      }
+      if _storage._createdAtUnix != 0 {
+        try visitor.visitSingularInt64Field(value: _storage._createdAtUnix, fieldNumber: 10)
+      }
+      if _storage._startedAtUnix != 0 {
+        try visitor.visitSingularInt64Field(value: _storage._startedAtUnix, fieldNumber: 11)
+      }
+      if _storage._finishedAtUnix != 0 {
+        try visitor.visitSingularInt64Field(value: _storage._finishedAtUnix, fieldNumber: 12)
+      }
+      if !_storage._terminalReason.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._terminalReason, fieldNumber: 13)
+      }
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Archebase_DataGateway_V1_CopyJobView, rhs: Archebase_DataGateway_V1_CopyJobView) -> Bool {
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._copyJobID != rhs_storage._copyJobID {return false}
+        if _storage._status != rhs_storage._status {return false}
+        if _storage._destination != rhs_storage._destination {return false}
+        if _storage._totalItems != rhs_storage._totalItems {return false}
+        if _storage._completedItems != rhs_storage._completedItems {return false}
+        if _storage._failedItems != rhs_storage._failedItems {return false}
+        if _storage._skippedItems != rhs_storage._skippedItems {return false}
+        if _storage._totalBytes != rhs_storage._totalBytes {return false}
+        if _storage._copiedBytes != rhs_storage._copiedBytes {return false}
+        if _storage._createdAtUnix != rhs_storage._createdAtUnix {return false}
+        if _storage._startedAtUnix != rhs_storage._startedAtUnix {return false}
+        if _storage._finishedAtUnix != rhs_storage._finishedAtUnix {return false}
+        if _storage._terminalReason != rhs_storage._terminalReason {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Archebase_DataGateway_V1_ListCopyJobItemsRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ListCopyJobItemsRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}copy_job_id\0\u{1}statuses\0\u{3}page_size\0\u{3}page_token\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.copyJobID) }()
+      case 2: try { try decoder.decodeRepeatedEnumField(value: &self.statuses) }()
+      case 3: try { try decoder.decodeSingularInt32Field(value: &self.pageSize) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.pageToken) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.copyJobID.isEmpty {
+      try visitor.visitSingularStringField(value: self.copyJobID, fieldNumber: 1)
+    }
+    if !self.statuses.isEmpty {
+      try visitor.visitPackedEnumField(value: self.statuses, fieldNumber: 2)
+    }
+    if self.pageSize != 0 {
+      try visitor.visitSingularInt32Field(value: self.pageSize, fieldNumber: 3)
+    }
+    if !self.pageToken.isEmpty {
+      try visitor.visitSingularStringField(value: self.pageToken, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Archebase_DataGateway_V1_ListCopyJobItemsRequest, rhs: Archebase_DataGateway_V1_ListCopyJobItemsRequest) -> Bool {
+    if lhs.copyJobID != rhs.copyJobID {return false}
+    if lhs.statuses != rhs.statuses {return false}
+    if lhs.pageSize != rhs.pageSize {return false}
+    if lhs.pageToken != rhs.pageToken {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Archebase_DataGateway_V1_CopyJobItemView: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CopyJobItemView"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}file_id\0\u{3}destination_object_key\0\u{1}status\0\u{3}source_size\0\u{3}copied_bytes\0\u{3}error_code\0\u{3}error_message\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.fileID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.destinationObjectKey) }()
+      case 3: try { try decoder.decodeSingularEnumField(value: &self.status) }()
+      case 4: try { try decoder.decodeSingularInt64Field(value: &self.sourceSize) }()
+      case 5: try { try decoder.decodeSingularInt64Field(value: &self.copiedBytes) }()
+      case 6: try { try decoder.decodeSingularStringField(value: &self.errorCode) }()
+      case 7: try { try decoder.decodeSingularStringField(value: &self.errorMessage) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.fileID.isEmpty {
+      try visitor.visitSingularStringField(value: self.fileID, fieldNumber: 1)
+    }
+    if !self.destinationObjectKey.isEmpty {
+      try visitor.visitSingularStringField(value: self.destinationObjectKey, fieldNumber: 2)
+    }
+    if self.status != .unspecified {
+      try visitor.visitSingularEnumField(value: self.status, fieldNumber: 3)
+    }
+    if self.sourceSize != 0 {
+      try visitor.visitSingularInt64Field(value: self.sourceSize, fieldNumber: 4)
+    }
+    if self.copiedBytes != 0 {
+      try visitor.visitSingularInt64Field(value: self.copiedBytes, fieldNumber: 5)
+    }
+    if !self.errorCode.isEmpty {
+      try visitor.visitSingularStringField(value: self.errorCode, fieldNumber: 6)
+    }
+    if !self.errorMessage.isEmpty {
+      try visitor.visitSingularStringField(value: self.errorMessage, fieldNumber: 7)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Archebase_DataGateway_V1_CopyJobItemView, rhs: Archebase_DataGateway_V1_CopyJobItemView) -> Bool {
+    if lhs.fileID != rhs.fileID {return false}
+    if lhs.destinationObjectKey != rhs.destinationObjectKey {return false}
+    if lhs.status != rhs.status {return false}
+    if lhs.sourceSize != rhs.sourceSize {return false}
+    if lhs.copiedBytes != rhs.copiedBytes {return false}
+    if lhs.errorCode != rhs.errorCode {return false}
+    if lhs.errorMessage != rhs.errorMessage {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Archebase_DataGateway_V1_ListCopyJobItemsResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ListCopyJobItemsResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}items\0\u{3}next_page_token\0\u{3}total_size\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeRepeatedMessageField(value: &self.items) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.nextPageToken) }()
+      case 3: try { try decoder.decodeSingularInt32Field(value: &self.totalSize) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.items.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.items, fieldNumber: 1)
+    }
+    if !self.nextPageToken.isEmpty {
+      try visitor.visitSingularStringField(value: self.nextPageToken, fieldNumber: 2)
+    }
+    if self.totalSize != 0 {
+      try visitor.visitSingularInt32Field(value: self.totalSize, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Archebase_DataGateway_V1_ListCopyJobItemsResponse, rhs: Archebase_DataGateway_V1_ListCopyJobItemsResponse) -> Bool {
+    if lhs.items != rhs.items {return false}
+    if lhs.nextPageToken != rhs.nextPageToken {return false}
+    if lhs.totalSize != rhs.totalSize {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Archebase_DataGateway_V1_CancelCopyJobRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CancelCopyJobRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}copy_job_id\0\u{1}reason\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.copyJobID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.reason) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.copyJobID.isEmpty {
+      try visitor.visitSingularStringField(value: self.copyJobID, fieldNumber: 1)
+    }
+    if !self.reason.isEmpty {
+      try visitor.visitSingularStringField(value: self.reason, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Archebase_DataGateway_V1_CancelCopyJobRequest, rhs: Archebase_DataGateway_V1_CancelCopyJobRequest) -> Bool {
+    if lhs.copyJobID != rhs.copyJobID {return false}
+    if lhs.reason != rhs.reason {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Archebase_DataGateway_V1_CancelCopyJobResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CancelCopyJobResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}copy_job_id\0\u{1}status\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.copyJobID) }()
+      case 2: try { try decoder.decodeSingularEnumField(value: &self.status) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.copyJobID.isEmpty {
+      try visitor.visitSingularStringField(value: self.copyJobID, fieldNumber: 1)
+    }
+    if self.status != .unspecified {
+      try visitor.visitSingularEnumField(value: self.status, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Archebase_DataGateway_V1_CancelCopyJobResponse, rhs: Archebase_DataGateway_V1_CancelCopyJobResponse) -> Bool {
+    if lhs.copyJobID != rhs.copyJobID {return false}
+    if lhs.status != rhs.status {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

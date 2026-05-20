@@ -653,6 +653,815 @@ extension Archebase_DataGateway_V1_DataGatewayService.ClientProtocol {
     }
 }
 
+// MARK: - archebase.data_gateway.v1.DataGatewayDownloadService
+
+/// Namespace containing generated types for the "archebase.data_gateway.v1.DataGatewayDownloadService" service.
+@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+public enum Archebase_DataGateway_V1_DataGatewayDownloadService: Sendable {
+    /// Service descriptor for the "archebase.data_gateway.v1.DataGatewayDownloadService" service.
+    public static let descriptor = GRPCCore.ServiceDescriptor(fullyQualifiedService: "archebase.data_gateway.v1.DataGatewayDownloadService")
+    /// Namespace for method metadata.
+    public enum Method: Sendable {
+        /// Namespace for "RequestDownload" metadata.
+        public enum RequestDownload: Sendable {
+            /// Request type for "RequestDownload".
+            public typealias Input = Archebase_DataGateway_V1_RequestDownloadRequest
+            /// Response type for "RequestDownload".
+            public typealias Output = Archebase_DataGateway_V1_RequestDownloadResponse
+            /// Descriptor for "RequestDownload".
+            public static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "archebase.data_gateway.v1.DataGatewayDownloadService"),
+                method: "RequestDownload",
+                type: .unary
+            )
+        }
+        /// Descriptors for all methods in the "archebase.data_gateway.v1.DataGatewayDownloadService" service.
+        public static let descriptors: [GRPCCore.MethodDescriptor] = [
+            RequestDownload.descriptor
+        ]
+    }
+}
+
+@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+extension GRPCCore.ServiceDescriptor {
+    /// Service descriptor for the "archebase.data_gateway.v1.DataGatewayDownloadService" service.
+    public static let archebase_dataGateway_v1_DataGatewayDownloadService = GRPCCore.ServiceDescriptor(fullyQualifiedService: "archebase.data_gateway.v1.DataGatewayDownloadService")
+}
+
+// MARK: archebase.data_gateway.v1.DataGatewayDownloadService (client)
+
+@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+extension Archebase_DataGateway_V1_DataGatewayDownloadService {
+    /// Generated client protocol for the "archebase.data_gateway.v1.DataGatewayDownloadService" service.
+    ///
+    /// You don't need to implement this protocol directly, use the generated
+    /// implementation, ``Client``.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > SDK-facing download authorization service exposed on the public gRPC port.
+    /// >
+    /// > This service uses user access JWT authentication and returns short-lived
+    /// > presigned read operations rather than cloud credentials.
+    public protocol ClientProtocol: Sendable {
+        /// Call the "RequestDownload" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Authorizes direct object downloads for the requested file IDs.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Archebase_DataGateway_V1_RequestDownloadRequest` message.
+        ///   - serializer: A serializer for `Archebase_DataGateway_V1_RequestDownloadRequest` messages.
+        ///   - deserializer: A deserializer for `Archebase_DataGateway_V1_RequestDownloadResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func requestDownload<Result>(
+            request: GRPCCore.ClientRequest<Archebase_DataGateway_V1_RequestDownloadRequest>,
+            serializer: some GRPCCore.MessageSerializer<Archebase_DataGateway_V1_RequestDownloadRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Archebase_DataGateway_V1_RequestDownloadResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_RequestDownloadResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+    }
+
+    /// Generated client for the "archebase.data_gateway.v1.DataGatewayDownloadService" service.
+    ///
+    /// The ``Client`` provides an implementation of ``ClientProtocol`` which wraps
+    /// a `GRPCCore.GRPCCClient`. The underlying `GRPCClient` provides the long-lived
+    /// means of communication with the remote peer.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > SDK-facing download authorization service exposed on the public gRPC port.
+    /// >
+    /// > This service uses user access JWT authentication and returns short-lived
+    /// > presigned read operations rather than cloud credentials.
+    public struct Client<Transport>: ClientProtocol where Transport: GRPCCore.ClientTransport {
+        private let client: GRPCCore.GRPCClient<Transport>
+
+        /// Creates a new client wrapping the provided `GRPCCore.GRPCClient`.
+        ///
+        /// - Parameters:
+        ///   - client: A `GRPCCore.GRPCClient` providing a communication channel to the service.
+        public init(wrapping client: GRPCCore.GRPCClient<Transport>) {
+            self.client = client
+        }
+
+        /// Call the "RequestDownload" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Authorizes direct object downloads for the requested file IDs.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Archebase_DataGateway_V1_RequestDownloadRequest` message.
+        ///   - serializer: A serializer for `Archebase_DataGateway_V1_RequestDownloadRequest` messages.
+        ///   - deserializer: A deserializer for `Archebase_DataGateway_V1_RequestDownloadResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        public func requestDownload<Result>(
+            request: GRPCCore.ClientRequest<Archebase_DataGateway_V1_RequestDownloadRequest>,
+            serializer: some GRPCCore.MessageSerializer<Archebase_DataGateway_V1_RequestDownloadRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Archebase_DataGateway_V1_RequestDownloadResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_RequestDownloadResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Archebase_DataGateway_V1_DataGatewayDownloadService.Method.RequestDownload.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+    }
+}
+
+// Helpers providing default arguments to 'ClientProtocol' methods.
+@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+extension Archebase_DataGateway_V1_DataGatewayDownloadService.ClientProtocol {
+    /// Call the "RequestDownload" method.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > Authorizes direct object downloads for the requested file IDs.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Archebase_DataGateway_V1_RequestDownloadRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func requestDownload<Result>(
+        request: GRPCCore.ClientRequest<Archebase_DataGateway_V1_RequestDownloadRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_RequestDownloadResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.requestDownload(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Archebase_DataGateway_V1_RequestDownloadRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Archebase_DataGateway_V1_RequestDownloadResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+}
+
+// Helpers providing sugared APIs for 'ClientProtocol' methods.
+@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+extension Archebase_DataGateway_V1_DataGatewayDownloadService.ClientProtocol {
+    /// Call the "RequestDownload" method.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > Authorizes direct object downloads for the requested file IDs.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func requestDownload<Result>(
+        _ message: Archebase_DataGateway_V1_RequestDownloadRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_RequestDownloadResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Archebase_DataGateway_V1_RequestDownloadRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.requestDownload(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+}
+
+// MARK: - archebase.data_gateway.v1.DataGatewayCopyService
+
+/// Namespace containing generated types for the "archebase.data_gateway.v1.DataGatewayCopyService" service.
+@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+public enum Archebase_DataGateway_V1_DataGatewayCopyService: Sendable {
+    /// Service descriptor for the "archebase.data_gateway.v1.DataGatewayCopyService" service.
+    public static let descriptor = GRPCCore.ServiceDescriptor(fullyQualifiedService: "archebase.data_gateway.v1.DataGatewayCopyService")
+    /// Namespace for method metadata.
+    public enum Method: Sendable {
+        /// Namespace for "CreateCopyJob" metadata.
+        public enum CreateCopyJob: Sendable {
+            /// Request type for "CreateCopyJob".
+            public typealias Input = Archebase_DataGateway_V1_CreateCopyJobRequest
+            /// Response type for "CreateCopyJob".
+            public typealias Output = Archebase_DataGateway_V1_CreateCopyJobResponse
+            /// Descriptor for "CreateCopyJob".
+            public static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "archebase.data_gateway.v1.DataGatewayCopyService"),
+                method: "CreateCopyJob",
+                type: .unary
+            )
+        }
+        /// Namespace for "GetCopyJob" metadata.
+        public enum GetCopyJob: Sendable {
+            /// Request type for "GetCopyJob".
+            public typealias Input = Archebase_DataGateway_V1_GetCopyJobRequest
+            /// Response type for "GetCopyJob".
+            public typealias Output = Archebase_DataGateway_V1_GetCopyJobResponse
+            /// Descriptor for "GetCopyJob".
+            public static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "archebase.data_gateway.v1.DataGatewayCopyService"),
+                method: "GetCopyJob",
+                type: .unary
+            )
+        }
+        /// Namespace for "ListCopyJobItems" metadata.
+        public enum ListCopyJobItems: Sendable {
+            /// Request type for "ListCopyJobItems".
+            public typealias Input = Archebase_DataGateway_V1_ListCopyJobItemsRequest
+            /// Response type for "ListCopyJobItems".
+            public typealias Output = Archebase_DataGateway_V1_ListCopyJobItemsResponse
+            /// Descriptor for "ListCopyJobItems".
+            public static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "archebase.data_gateway.v1.DataGatewayCopyService"),
+                method: "ListCopyJobItems",
+                type: .unary
+            )
+        }
+        /// Namespace for "CancelCopyJob" metadata.
+        public enum CancelCopyJob: Sendable {
+            /// Request type for "CancelCopyJob".
+            public typealias Input = Archebase_DataGateway_V1_CancelCopyJobRequest
+            /// Response type for "CancelCopyJob".
+            public typealias Output = Archebase_DataGateway_V1_CancelCopyJobResponse
+            /// Descriptor for "CancelCopyJob".
+            public static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "archebase.data_gateway.v1.DataGatewayCopyService"),
+                method: "CancelCopyJob",
+                type: .unary
+            )
+        }
+        /// Descriptors for all methods in the "archebase.data_gateway.v1.DataGatewayCopyService" service.
+        public static let descriptors: [GRPCCore.MethodDescriptor] = [
+            CreateCopyJob.descriptor,
+            GetCopyJob.descriptor,
+            ListCopyJobItems.descriptor,
+            CancelCopyJob.descriptor
+        ]
+    }
+}
+
+@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+extension GRPCCore.ServiceDescriptor {
+    /// Service descriptor for the "archebase.data_gateway.v1.DataGatewayCopyService" service.
+    public static let archebase_dataGateway_v1_DataGatewayCopyService = GRPCCore.ServiceDescriptor(fullyQualifiedService: "archebase.data_gateway.v1.DataGatewayCopyService")
+}
+
+// MARK: archebase.data_gateway.v1.DataGatewayCopyService (client)
+
+@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+extension Archebase_DataGateway_V1_DataGatewayCopyService {
+    /// Generated client protocol for the "archebase.data_gateway.v1.DataGatewayCopyService" service.
+    ///
+    /// You don't need to implement this protocol directly, use the generated
+    /// implementation, ``Client``.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > SDK-facing asynchronous object copy service exposed on the public gRPC port.
+    /// >
+    /// > This service accepts logical file IDs and persists copy jobs for background
+    /// > workers. It never exposes source OSS bucket, object key, or source-side
+    /// > credentials to the caller.
+    public protocol ClientProtocol: Sendable {
+        /// Call the "CreateCopyJob" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Creates an asynchronous copy job for the requested file IDs.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Archebase_DataGateway_V1_CreateCopyJobRequest` message.
+        ///   - serializer: A serializer for `Archebase_DataGateway_V1_CreateCopyJobRequest` messages.
+        ///   - deserializer: A deserializer for `Archebase_DataGateway_V1_CreateCopyJobResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func createCopyJob<Result>(
+            request: GRPCCore.ClientRequest<Archebase_DataGateway_V1_CreateCopyJobRequest>,
+            serializer: some GRPCCore.MessageSerializer<Archebase_DataGateway_V1_CreateCopyJobRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Archebase_DataGateway_V1_CreateCopyJobResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_CreateCopyJobResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "GetCopyJob" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Returns the aggregate state of one copy job.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Archebase_DataGateway_V1_GetCopyJobRequest` message.
+        ///   - serializer: A serializer for `Archebase_DataGateway_V1_GetCopyJobRequest` messages.
+        ///   - deserializer: A deserializer for `Archebase_DataGateway_V1_GetCopyJobResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func getCopyJob<Result>(
+            request: GRPCCore.ClientRequest<Archebase_DataGateway_V1_GetCopyJobRequest>,
+            serializer: some GRPCCore.MessageSerializer<Archebase_DataGateway_V1_GetCopyJobRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Archebase_DataGateway_V1_GetCopyJobResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_GetCopyJobResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "ListCopyJobItems" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Lists item-level copy outcomes for one copy job.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Archebase_DataGateway_V1_ListCopyJobItemsRequest` message.
+        ///   - serializer: A serializer for `Archebase_DataGateway_V1_ListCopyJobItemsRequest` messages.
+        ///   - deserializer: A deserializer for `Archebase_DataGateway_V1_ListCopyJobItemsResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func listCopyJobItems<Result>(
+            request: GRPCCore.ClientRequest<Archebase_DataGateway_V1_ListCopyJobItemsRequest>,
+            serializer: some GRPCCore.MessageSerializer<Archebase_DataGateway_V1_ListCopyJobItemsRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Archebase_DataGateway_V1_ListCopyJobItemsResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_ListCopyJobItemsResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "CancelCopyJob" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Requests cancellation of one copy job.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Archebase_DataGateway_V1_CancelCopyJobRequest` message.
+        ///   - serializer: A serializer for `Archebase_DataGateway_V1_CancelCopyJobRequest` messages.
+        ///   - deserializer: A deserializer for `Archebase_DataGateway_V1_CancelCopyJobResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func cancelCopyJob<Result>(
+            request: GRPCCore.ClientRequest<Archebase_DataGateway_V1_CancelCopyJobRequest>,
+            serializer: some GRPCCore.MessageSerializer<Archebase_DataGateway_V1_CancelCopyJobRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Archebase_DataGateway_V1_CancelCopyJobResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_CancelCopyJobResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+    }
+
+    /// Generated client for the "archebase.data_gateway.v1.DataGatewayCopyService" service.
+    ///
+    /// The ``Client`` provides an implementation of ``ClientProtocol`` which wraps
+    /// a `GRPCCore.GRPCCClient`. The underlying `GRPCClient` provides the long-lived
+    /// means of communication with the remote peer.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > SDK-facing asynchronous object copy service exposed on the public gRPC port.
+    /// >
+    /// > This service accepts logical file IDs and persists copy jobs for background
+    /// > workers. It never exposes source OSS bucket, object key, or source-side
+    /// > credentials to the caller.
+    public struct Client<Transport>: ClientProtocol where Transport: GRPCCore.ClientTransport {
+        private let client: GRPCCore.GRPCClient<Transport>
+
+        /// Creates a new client wrapping the provided `GRPCCore.GRPCClient`.
+        ///
+        /// - Parameters:
+        ///   - client: A `GRPCCore.GRPCClient` providing a communication channel to the service.
+        public init(wrapping client: GRPCCore.GRPCClient<Transport>) {
+            self.client = client
+        }
+
+        /// Call the "CreateCopyJob" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Creates an asynchronous copy job for the requested file IDs.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Archebase_DataGateway_V1_CreateCopyJobRequest` message.
+        ///   - serializer: A serializer for `Archebase_DataGateway_V1_CreateCopyJobRequest` messages.
+        ///   - deserializer: A deserializer for `Archebase_DataGateway_V1_CreateCopyJobResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        public func createCopyJob<Result>(
+            request: GRPCCore.ClientRequest<Archebase_DataGateway_V1_CreateCopyJobRequest>,
+            serializer: some GRPCCore.MessageSerializer<Archebase_DataGateway_V1_CreateCopyJobRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Archebase_DataGateway_V1_CreateCopyJobResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_CreateCopyJobResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Archebase_DataGateway_V1_DataGatewayCopyService.Method.CreateCopyJob.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "GetCopyJob" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Returns the aggregate state of one copy job.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Archebase_DataGateway_V1_GetCopyJobRequest` message.
+        ///   - serializer: A serializer for `Archebase_DataGateway_V1_GetCopyJobRequest` messages.
+        ///   - deserializer: A deserializer for `Archebase_DataGateway_V1_GetCopyJobResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        public func getCopyJob<Result>(
+            request: GRPCCore.ClientRequest<Archebase_DataGateway_V1_GetCopyJobRequest>,
+            serializer: some GRPCCore.MessageSerializer<Archebase_DataGateway_V1_GetCopyJobRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Archebase_DataGateway_V1_GetCopyJobResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_GetCopyJobResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Archebase_DataGateway_V1_DataGatewayCopyService.Method.GetCopyJob.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "ListCopyJobItems" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Lists item-level copy outcomes for one copy job.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Archebase_DataGateway_V1_ListCopyJobItemsRequest` message.
+        ///   - serializer: A serializer for `Archebase_DataGateway_V1_ListCopyJobItemsRequest` messages.
+        ///   - deserializer: A deserializer for `Archebase_DataGateway_V1_ListCopyJobItemsResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        public func listCopyJobItems<Result>(
+            request: GRPCCore.ClientRequest<Archebase_DataGateway_V1_ListCopyJobItemsRequest>,
+            serializer: some GRPCCore.MessageSerializer<Archebase_DataGateway_V1_ListCopyJobItemsRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Archebase_DataGateway_V1_ListCopyJobItemsResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_ListCopyJobItemsResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Archebase_DataGateway_V1_DataGatewayCopyService.Method.ListCopyJobItems.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "CancelCopyJob" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Requests cancellation of one copy job.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Archebase_DataGateway_V1_CancelCopyJobRequest` message.
+        ///   - serializer: A serializer for `Archebase_DataGateway_V1_CancelCopyJobRequest` messages.
+        ///   - deserializer: A deserializer for `Archebase_DataGateway_V1_CancelCopyJobResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        public func cancelCopyJob<Result>(
+            request: GRPCCore.ClientRequest<Archebase_DataGateway_V1_CancelCopyJobRequest>,
+            serializer: some GRPCCore.MessageSerializer<Archebase_DataGateway_V1_CancelCopyJobRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Archebase_DataGateway_V1_CancelCopyJobResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_CancelCopyJobResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Archebase_DataGateway_V1_DataGatewayCopyService.Method.CancelCopyJob.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+    }
+}
+
+// Helpers providing default arguments to 'ClientProtocol' methods.
+@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+extension Archebase_DataGateway_V1_DataGatewayCopyService.ClientProtocol {
+    /// Call the "CreateCopyJob" method.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > Creates an asynchronous copy job for the requested file IDs.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Archebase_DataGateway_V1_CreateCopyJobRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func createCopyJob<Result>(
+        request: GRPCCore.ClientRequest<Archebase_DataGateway_V1_CreateCopyJobRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_CreateCopyJobResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.createCopyJob(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Archebase_DataGateway_V1_CreateCopyJobRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Archebase_DataGateway_V1_CreateCopyJobResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "GetCopyJob" method.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > Returns the aggregate state of one copy job.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Archebase_DataGateway_V1_GetCopyJobRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func getCopyJob<Result>(
+        request: GRPCCore.ClientRequest<Archebase_DataGateway_V1_GetCopyJobRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_GetCopyJobResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.getCopyJob(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Archebase_DataGateway_V1_GetCopyJobRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Archebase_DataGateway_V1_GetCopyJobResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "ListCopyJobItems" method.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > Lists item-level copy outcomes for one copy job.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Archebase_DataGateway_V1_ListCopyJobItemsRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func listCopyJobItems<Result>(
+        request: GRPCCore.ClientRequest<Archebase_DataGateway_V1_ListCopyJobItemsRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_ListCopyJobItemsResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.listCopyJobItems(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Archebase_DataGateway_V1_ListCopyJobItemsRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Archebase_DataGateway_V1_ListCopyJobItemsResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "CancelCopyJob" method.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > Requests cancellation of one copy job.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Archebase_DataGateway_V1_CancelCopyJobRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func cancelCopyJob<Result>(
+        request: GRPCCore.ClientRequest<Archebase_DataGateway_V1_CancelCopyJobRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_CancelCopyJobResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.cancelCopyJob(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Archebase_DataGateway_V1_CancelCopyJobRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Archebase_DataGateway_V1_CancelCopyJobResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+}
+
+// Helpers providing sugared APIs for 'ClientProtocol' methods.
+@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+extension Archebase_DataGateway_V1_DataGatewayCopyService.ClientProtocol {
+    /// Call the "CreateCopyJob" method.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > Creates an asynchronous copy job for the requested file IDs.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func createCopyJob<Result>(
+        _ message: Archebase_DataGateway_V1_CreateCopyJobRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_CreateCopyJobResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Archebase_DataGateway_V1_CreateCopyJobRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.createCopyJob(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "GetCopyJob" method.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > Returns the aggregate state of one copy job.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func getCopyJob<Result>(
+        _ message: Archebase_DataGateway_V1_GetCopyJobRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_GetCopyJobResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Archebase_DataGateway_V1_GetCopyJobRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.getCopyJob(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "ListCopyJobItems" method.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > Lists item-level copy outcomes for one copy job.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func listCopyJobItems<Result>(
+        _ message: Archebase_DataGateway_V1_ListCopyJobItemsRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_ListCopyJobItemsResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Archebase_DataGateway_V1_ListCopyJobItemsRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.listCopyJobItems(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "CancelCopyJob" method.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > Requests cancellation of one copy job.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func cancelCopyJob<Result>(
+        _ message: Archebase_DataGateway_V1_CancelCopyJobRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_CancelCopyJobResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Archebase_DataGateway_V1_CancelCopyJobRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.cancelCopyJob(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+}
+
 // MARK: - archebase.data_gateway.v1.DeviceInitService
 
 /// Namespace containing generated types for the "archebase.data_gateway.v1.DeviceInitService" service.
@@ -675,9 +1484,23 @@ public enum Archebase_DataGateway_V1_DeviceInitService: Sendable {
                 type: .unary
             )
         }
+        /// Namespace for "ReinitDevice" metadata.
+        public enum ReinitDevice: Sendable {
+            /// Request type for "ReinitDevice".
+            public typealias Input = Archebase_DataGateway_V1_ReinitDeviceRequest
+            /// Response type for "ReinitDevice".
+            public typealias Output = Archebase_DataGateway_V1_InitDeviceResponse
+            /// Descriptor for "ReinitDevice".
+            public static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "archebase.data_gateway.v1.DeviceInitService"),
+                method: "ReinitDevice",
+                type: .unary
+            )
+        }
         /// Descriptors for all methods in the "archebase.data_gateway.v1.DeviceInitService" service.
         public static let descriptors: [GRPCCore.MethodDescriptor] = [
-            InitDevice.descriptor
+            InitDevice.descriptor,
+            ReinitDevice.descriptor
         ]
     }
 }
@@ -700,7 +1523,7 @@ extension Archebase_DataGateway_V1_DeviceInitService {
     /// > Source IDL Documentation:
     /// >
     /// > SDK-facing device initialization service exposed on the dedicated init port.
-    /// > 
+    /// >
     /// > This surface intentionally does not require the upload API key because it is
     /// > used to provision that key for a registered device. Deployment-level network
     /// > controls and rate limiting are required before exposing it outside controlled
@@ -710,7 +1533,7 @@ extension Archebase_DataGateway_V1_DeviceInitService {
         ///
         /// > Source IDL Documentation:
         /// >
-        /// > Initializes or re-initializes one registered device and returns the upload API key.
+        /// > Initializes one registered device and returns the upload API key.
         ///
         /// - Parameters:
         ///   - request: A request containing a single `Archebase_DataGateway_V1_InitDeviceRequest` message.
@@ -728,6 +1551,29 @@ extension Archebase_DataGateway_V1_DeviceInitService {
             options: GRPCCore.CallOptions,
             onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_InitDeviceResponse>) async throws -> Result
         ) async throws -> Result where Result: Sendable
+
+        /// Call the "ReinitDevice" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Re-initializes one registered device and returns a rotated upload API key.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Archebase_DataGateway_V1_ReinitDeviceRequest` message.
+        ///   - serializer: A serializer for `Archebase_DataGateway_V1_ReinitDeviceRequest` messages.
+        ///   - deserializer: A deserializer for `Archebase_DataGateway_V1_InitDeviceResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func reinitDevice<Result>(
+            request: GRPCCore.ClientRequest<Archebase_DataGateway_V1_ReinitDeviceRequest>,
+            serializer: some GRPCCore.MessageSerializer<Archebase_DataGateway_V1_ReinitDeviceRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Archebase_DataGateway_V1_InitDeviceResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_InitDeviceResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
     }
 
     /// Generated client for the "archebase.data_gateway.v1.DeviceInitService" service.
@@ -739,7 +1585,7 @@ extension Archebase_DataGateway_V1_DeviceInitService {
     /// > Source IDL Documentation:
     /// >
     /// > SDK-facing device initialization service exposed on the dedicated init port.
-    /// > 
+    /// >
     /// > This surface intentionally does not require the upload API key because it is
     /// > used to provision that key for a registered device. Deployment-level network
     /// > controls and rate limiting are required before exposing it outside controlled
@@ -759,7 +1605,7 @@ extension Archebase_DataGateway_V1_DeviceInitService {
         ///
         /// > Source IDL Documentation:
         /// >
-        /// > Initializes or re-initializes one registered device and returns the upload API key.
+        /// > Initializes one registered device and returns the upload API key.
         ///
         /// - Parameters:
         ///   - request: A request containing a single `Archebase_DataGateway_V1_InitDeviceRequest` message.
@@ -788,6 +1634,40 @@ extension Archebase_DataGateway_V1_DeviceInitService {
                 onResponse: handleResponse
             )
         }
+
+        /// Call the "ReinitDevice" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Re-initializes one registered device and returns a rotated upload API key.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Archebase_DataGateway_V1_ReinitDeviceRequest` message.
+        ///   - serializer: A serializer for `Archebase_DataGateway_V1_ReinitDeviceRequest` messages.
+        ///   - deserializer: A deserializer for `Archebase_DataGateway_V1_InitDeviceResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        public func reinitDevice<Result>(
+            request: GRPCCore.ClientRequest<Archebase_DataGateway_V1_ReinitDeviceRequest>,
+            serializer: some GRPCCore.MessageSerializer<Archebase_DataGateway_V1_ReinitDeviceRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Archebase_DataGateway_V1_InitDeviceResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_InitDeviceResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Archebase_DataGateway_V1_DeviceInitService.Method.ReinitDevice.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
     }
 }
 
@@ -798,7 +1678,7 @@ extension Archebase_DataGateway_V1_DeviceInitService.ClientProtocol {
     ///
     /// > Source IDL Documentation:
     /// >
-    /// > Initializes or re-initializes one registered device and returns the upload API key.
+    /// > Initializes one registered device and returns the upload API key.
     ///
     /// - Parameters:
     ///   - request: A request containing a single `Archebase_DataGateway_V1_InitDeviceRequest` message.
@@ -822,6 +1702,35 @@ extension Archebase_DataGateway_V1_DeviceInitService.ClientProtocol {
             onResponse: handleResponse
         )
     }
+
+    /// Call the "ReinitDevice" method.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > Re-initializes one registered device and returns a rotated upload API key.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Archebase_DataGateway_V1_ReinitDeviceRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func reinitDevice<Result>(
+        request: GRPCCore.ClientRequest<Archebase_DataGateway_V1_ReinitDeviceRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_InitDeviceResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.reinitDevice(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Archebase_DataGateway_V1_ReinitDeviceRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Archebase_DataGateway_V1_InitDeviceResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
 }
 
 // Helpers providing sugared APIs for 'ClientProtocol' methods.
@@ -831,7 +1740,7 @@ extension Archebase_DataGateway_V1_DeviceInitService.ClientProtocol {
     ///
     /// > Source IDL Documentation:
     /// >
-    /// > Initializes or re-initializes one registered device and returns the upload API key.
+    /// > Initializes one registered device and returns the upload API key.
     ///
     /// - Parameters:
     ///   - message: request message to send.
@@ -854,6 +1763,39 @@ extension Archebase_DataGateway_V1_DeviceInitService.ClientProtocol {
             metadata: metadata
         )
         return try await self.initDevice(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "ReinitDevice" method.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > Re-initializes one registered device and returns a rotated upload API key.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func reinitDevice<Result>(
+        _ message: Archebase_DataGateway_V1_ReinitDeviceRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_InitDeviceResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Archebase_DataGateway_V1_ReinitDeviceRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.reinitDevice(
             request: request,
             options: options,
             onResponse: handleResponse

@@ -496,7 +496,7 @@ public actor ArchebaseDeviceInitializer {
         if await self.configStore.exists() {
             throw DataGatewayClientError.alreadyInitialized(configURL: await self.configStore.resolvedConfigURL())
         }
-        let config = try await self.remoteConfig(deviceID: deviceID)
+        let config = try await self.remoteConfig(deviceID: deviceID, mode: .initDevice)
         try await self.configStore.initialize(config)
         return config
     }
@@ -506,18 +506,27 @@ public actor ArchebaseDeviceInitializer {
         if await !self.configStore.exists() {
             throw DataGatewayClientError.notInitialized(configURL: await self.configStore.resolvedConfigURL())
         }
-        let config = try await self.remoteConfig(deviceID: deviceID)
+        let config = try await self.remoteConfig(deviceID: deviceID, mode: .reinitDevice)
         try await self.configStore.replaceForReinit(config)
         return config
     }
 
-    private func remoteConfig(deviceID: String) async throws -> ArchebaseConfig {
+    private func remoteConfig(deviceID: String, mode: DeviceInitRemoteMode) async throws -> ArchebaseConfig {
         do {
-            let response = try await self.initTransport.initDevice(
-                deviceID: deviceID,
-                sdkVersion: self.sdkVersion,
-                platform: self.platform
-            )
+            let response = switch mode {
+            case .initDevice:
+                try await self.initTransport.initDevice(
+                    deviceID: deviceID,
+                    sdkVersion: self.sdkVersion,
+                    platform: self.platform
+                )
+            case .reinitDevice:
+                try await self.initTransport.reinitDevice(
+                    deviceID: deviceID,
+                    sdkVersion: self.sdkVersion,
+                    platform: self.platform
+                )
+            }
             return try ArchebaseConfig(apiKey: response.apiKey, tags: response.tags)
         } catch let error as DataGatewayClientError {
             throw error
@@ -525,6 +534,11 @@ public actor ArchebaseDeviceInitializer {
             throw ControlPlaneErrorMapper.map(error)
         }
     }
+}
+
+private enum DeviceInitRemoteMode {
+    case initDevice
+    case reinitDevice
 }
 
 package final class DeviceInitRuntimeResources: @unchecked Sendable {
