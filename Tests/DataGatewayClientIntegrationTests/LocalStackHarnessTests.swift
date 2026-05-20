@@ -54,6 +54,12 @@ struct LocalStackHarnessTests {
     #expect(config.gatewayEndpoint == URL(string: "http://127.0.0.1:15053")!)
 }
 
+@Test func realEnvironmentURLHelperNormalizesSingleSlashSimulatorURLs() throws {
+    let url = try #require(normalizedURLFromEnvironmentValue("http:/example.com:50057"))
+
+    #expect(url == URL(string: "http://example.com:50057")!)
+}
+
 @Test func localStackEnvironmentFailsWhenRequiredVariablesAreMissing() {
     let environment = LocalStackTestEnvironment(environment: [:])
 
@@ -172,6 +178,7 @@ struct LocalStackHarnessTests {
 
     #expect(script.contains("xcodebuild build-for-testing"))
     #expect(script.contains("-skipPackageUpdates"))
+    #expect(script.contains(#"for key in "$AUTH_ENDPOINT_KEY" "$GATEWAY_ENDPOINT_KEY" "$INIT_ENDPOINT_KEY"; do"#))
 }
 
 @Test func aliyunEnvironmentContractValidatesPresenceOfCredentials() {
@@ -952,8 +959,27 @@ private func requiredValueFromEnvironment(_ key: String) throws -> String {
 
 private func requiredURLFromEnvironment(_ key: String) throws -> URL {
     let value = try requiredValueFromEnvironment(key)
-    guard let url = URL(string: value), url.host?.isEmpty == false else {
+    guard let url = normalizedURLFromEnvironmentValue(value) else {
         throw LocalStackHarnessError.invalidEndpoint(key)
+    }
+    return url
+}
+
+private func normalizedURLFromEnvironmentValue(_ value: String) -> URL? {
+    if let url = URL(string: value), url.host?.isEmpty == false {
+        return url
+    }
+
+    guard
+        let schemeRange = value.range(of: ":/"),
+        !value[schemeRange.upperBound...].hasPrefix("/")
+    else {
+        return nil
+    }
+
+    let normalized = value.replacingCharacters(in: schemeRange, with: "://")
+    guard let url = URL(string: normalized), url.host?.isEmpty == false else {
+        return nil
     }
     return url
 }

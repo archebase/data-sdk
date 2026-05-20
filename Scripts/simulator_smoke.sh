@@ -10,11 +10,8 @@ DESTINATION_TIMEOUT_SECONDS="${DGW_IOS_SMOKE_DESTINATION_TIMEOUT_SECONDS:-30}"
 CHECK_COMMAND_TIMEOUT_SECONDS="${DGW_IOS_SMOKE_CHECK_COMMAND_TIMEOUT_SECONDS:-60}"
 DEFAULT_TEST_TIMEOUT_SECONDS="${DGW_IOS_SMOKE_DEFAULT_TEST_TIMEOUT_SECONDS:-120}"
 MAX_TEST_TIMEOUT_SECONDS="${DGW_IOS_SMOKE_MAX_TEST_TIMEOUT_SECONDS:-300}"
+DEPLOYMENT_TARGET="${DGW_IOS_SMOKE_DEPLOYMENT_TARGET:-18.0}"
 OTHER_SWIFT_FLAGS_VALUE="${DGW_IOS_SMOKE_OTHER_SWIFT_FLAGS:-}"
-XCODEBUILD_BUILD_SETTINGS=()
-if [[ -n "$OTHER_SWIFT_FLAGS_VALUE" ]]; then
-  XCODEBUILD_BUILD_SETTINGS+=(OTHER_SWIFT_FLAGS="$OTHER_SWIFT_FLAGS_VALUE")
-fi
 
 read_public_endpoint_field() {
   python3 - "$PUBLIC_ENDPOINTS_RESOURCE" "$1" "$2" <<'PY'
@@ -65,6 +62,7 @@ Environment overrides:
   DGW_IOS_SMOKE_CHECK_COMMAND_TIMEOUT_SECONDS
   DGW_IOS_SMOKE_DEFAULT_TEST_TIMEOUT_SECONDS
   DGW_IOS_SMOKE_MAX_TEST_TIMEOUT_SECONDS
+  DGW_IOS_SMOKE_DEPLOYMENT_TARGET (defaults to 18.0)
   DGW_IOS_SMOKE_TEST_ONE
   DGW_IOS_SMOKE_TEST_TWO
   DGW_IOS_SMOKE_TEST_THREE
@@ -218,13 +216,21 @@ PY
 }
 
 build_for_testing() {
+  local build_settings=(
+    "IPHONEOS_DEPLOYMENT_TARGET=${DEPLOYMENT_TARGET}"
+  )
+  if [[ -n "$OTHER_SWIFT_FLAGS_VALUE" ]]; then
+    build_settings+=("OTHER_SWIFT_FLAGS=${OTHER_SWIFT_FLAGS_VALUE}")
+  fi
+
   xcodebuild build-for-testing \
+    -skipMacroValidation \
     -skipPackageUpdates \
     -scheme "$SCHEME" \
     -destination "$DESTINATION" \
     -destination-timeout "$DESTINATION_TIMEOUT_SECONDS" \
     -derivedDataPath "$DERIVED_DATA_PATH" \
-    "${XCODEBUILD_BUILD_SETTINGS[@]}"
+    "${build_settings[@]}"
 }
 
 resolve_xctestrun_path() {
@@ -278,6 +284,7 @@ for extra_key in (
     "DGW_OSS_TEST_OBJECT_PREFIX",
     "DATA_GATEWAY_CLIENT_USE_MOCK_OSS",
     f"{prefix}_TLS_MODE",
+    f"{prefix}_DEVICE_INIT_INTEGRATION",
 ):
     extra_value = os.environ.get(extra_key)
     if extra_value:
@@ -390,7 +397,7 @@ case "$MODE" in
       AUTH_ENDPOINT_KEY="${RUNTIME_ENV_PREFIX}_AUTH_ENDPOINT"
       GATEWAY_ENDPOINT_KEY="${RUNTIME_ENV_PREFIX}_GATEWAY_ENDPOINT"
       INIT_ENDPOINT_KEY="${RUNTIME_ENV_PREFIX}_INIT_ENDPOINT"
-      for key in "$AUTH_ENDPOINT_KEY" "$GATEWAY_ENDPOINT_KEY"; do
+      for key in "$AUTH_ENDPOINT_KEY" "$GATEWAY_ENDPOINT_KEY" "$INIT_ENDPOINT_KEY"; do
         if [[ -z "${!key:-}" ]]; then
           echo "${key} is required for simulator smoke execution" >&2
           exit 1

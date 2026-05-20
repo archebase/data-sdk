@@ -132,9 +132,9 @@ try await qiongcheSDK.saveConfigAndInit(configString: configStringFromTrustedCha
 let ready = await qiongcheSDK.isReadyToUpload()
 ```
 
-`saveConfigAndInit(configString:)` 接收穹彻可信渠道下发的完整配置字符串，完成设备初始化并写入本地文件。`isReadyToUpload()` 用于上传前判断本地配置和服务连通性是否满足创建上传客户端的条件。
+`saveConfigAndInit(configString:)` 接收穹彻可信渠道下发的完整配置字符串，完成设备初始化并写入本地文件。设备尚未 initialized 时会调用远端 `InitDevice`；设备已 initialized 时会在收到 `DATA_GATEWAY_DEVICE_ALREADY_INITIALIZED` 后静默改调远端 `ReinitDevice`，拿到新凭证后再覆盖本地配置。`isReadyToUpload()` 用于上传前判断本地配置和服务连通性是否满足创建上传客户端的条件。
 
-穹彻封装不提供 `reinit`、`reset` 或 `replaceConfig` 入口。需要更新配置时，继续调用 `saveConfigAndInit(configString:)`；该方法会在远端初始化成功后覆盖本地 endpoint、设备配置和穹彻 state。
+穹彻封装不提供 `reinit`、`reset` 或 `replaceConfig` 入口。需要更新配置时，继续调用 `saveConfigAndInit(configString:)`；该方法会在远端 init 或 reinit 成功后覆盖本地 endpoint、设备配置和穹彻 state。
 
 完成 ready 检查后，上传仍使用通用上传客户端：
 
@@ -174,10 +174,10 @@ let client = try await DataGatewayClient.fromArchebaseConfig(
 
 `saveConfigAndInit(configString:)` 的覆盖规则：
 
-1. 先解析配置并使用本次 `deviceInit` endpoint 调远端初始化。
-2. 远端初始化成功后，覆盖写入 `archebase-endpoints.json`、`archebase-config.json` 和 `qiongche-sdk-state.json`。
+1. 先解析配置并使用本次 `deviceInit` endpoint 调远端 init；如果服务端提示已 initialized，则内部改调远端 reinit。
+2. 远端 init 或 reinit 成功后，覆盖写入 `archebase-endpoints.json`、`archebase-config.json` 和 `qiongche-sdk-state.json`。
 3. 本地已有 endpoint、设备配置或 state 时，不因为内容不同报错。
-4. 远端初始化失败时，不覆盖本地已有 endpoint、设备配置或 state。
+4. 远端 init 和必要的 reinit 失败时，不覆盖本地已有 endpoint、设备配置或 state。
 5. endpoint 文件只保存 `auth`、`gateway`、`deviceInit`，不会保存 `device_id`。
 
 `isReadyToUpload()` 的判断范围：
@@ -229,7 +229,7 @@ Examples/qiongche-sdk-demo/
 open Examples/qiongche-sdk-demo/qiongche-sdk-demo.xcodeproj
 ```
 
-示例 App 面向穹彻 SDK 接入者，首屏提供配置输入、保存并初始化、本地状态、ready 检查、生成样例文件和上传样例文件。示例 App 不提供 reinit 按钮；再次提交配置会继续调用 `saveConfigAndInit(configString:)` 覆盖本地 endpoint、设备配置和穹彻 state。
+示例 App 面向穹彻 SDK 接入者，首屏提供配置输入、保存并初始化、本地状态、ready 检查、生成样例文件和上传样例文件。示例 App 不提供 reinit 按钮；再次提交配置会继续调用 `saveConfigAndInit(configString:)`，由 SDK 内部按服务端状态执行 init 或 reinit 并覆盖本地 endpoint、设备配置和穹彻 state。
 
 ## 6. 文件目录建议
 
@@ -272,9 +272,10 @@ print(deviceConfig.tags)
 `initDevice(deviceID:)` 的行为：
 
 1. 从 `archebase-endpoints.json` 读取 `deviceInit` endpoint。
-2. 本地没有 `archebase-config.json` 时，向公共初始化端点请求设备配置并写入本地文件。
+2. 本地没有 `archebase-config.json` 时，调用远端 `DeviceInitService.InitDevice` 请求设备配置并写入本地文件。
 3. 本地已经存在配置文件时，抛出 `DataGatewayClientError.alreadyInitialized(configURL:)`。
-4. 写入成功后返回 `ArchebaseConfig`，其中包含 `API Key` 和设备 tags。
+4. 如果服务端返回 `DATA_GATEWAY_DEVICE_ALREADY_INITIALIZED`，错误会以 `DataGatewayClientError.gatewayFailed` 向上暴露，不会自动 fallback 到 reinit。
+5. 写入成功后返回 `ArchebaseConfig`，其中包含 `API Key` 和设备 tags。
 
 如果 `archebase-endpoints.json` 不存在，构造 `ArchebaseDeviceInitializer(config:)` 时会抛出 `DataGatewayClientError.endpointsNotInitialized(endpointsURL:)`。App 应先获取 endpoint JSON，调用 `DataGatewayClient.initialize(endpointsJSON:endpointsURL:)`，成功后重试设备初始化。
 
@@ -289,8 +290,9 @@ let newDeviceConfig = try await initializer.reinitDevice(deviceID: "260427-00000
 `reinitDevice(deviceID:)` 的行为：
 
 1. 本地没有配置文件时，抛出 `DataGatewayClientError.notInitialized(configURL:)`。
-2. 本地已经存在配置文件时，重新获取设备配置并原子替换本地文件。
-3. 重新初始化会轮换上传凭证，旧配置中的凭证会失效。
+2. 本地已经存在配置文件时，调用远端 `DeviceInitService.ReinitDevice` 重新获取设备配置并原子替换本地文件。
+3. 如果服务端返回 `DATA_GATEWAY_DEVICE_NOT_INITIALIZED`，错误会以 `DataGatewayClientError.gatewayFailed` 向上暴露，不会自动 fallback 到 init。
+4. 重新初始化会轮换上传凭证，旧配置中的凭证会失效。
 
 已经开始且仍在本地快照中的上传，会继续使用创建上传时保存的 tags 和恢复状态。重新初始化只影响后续新建的上传客户端和新上传。
 

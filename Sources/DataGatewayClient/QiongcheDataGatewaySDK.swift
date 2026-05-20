@@ -92,6 +92,10 @@ public actor QiongcheDataGatewaySDK {
             timeout: self.deviceInitTimeout
         )
 
+        // A successful remote init/reinit can invalidate the previous credential.
+        // Keep readiness false until endpoints, config, and state all commit again.
+        try self.stateStore.removeIfExists()
+
         try await self.localPersister.replaceEndpoints(
             endpointsJSON: parsed.normalizedEndpointsJSONString,
             endpointsURL: self.paths.endpointsURL
@@ -114,6 +118,11 @@ public actor QiongcheDataGatewaySDK {
         }
 
         do {
+            let state = try self.stateStore.load()
+            let endpointsData = try Data(contentsOf: self.paths.endpointsURL)
+            guard state.endpointsSHA256 == QiongcheConfigParser.sha256Hex(endpointsData) else {
+                return false
+            }
             _ = try await ArchebaseConfigStore(configURL: self.paths.configURL).load()
             let endpoints = try ArchebasePublicEndpoints.load(endpointsURL: self.paths.endpointsURL)
 
@@ -265,6 +274,19 @@ package struct QiongcheSDKStateStore {
             throw error
         } catch {
             throw DataGatewayClientError.persistenceFailed("failed to write qiongche sdk state: \(error.localizedDescription)")
+        }
+    }
+
+    package func removeIfExists() throws {
+        guard self.fileManager.fileExists(atPath: self.stateURL.path) else {
+            return
+        }
+        do {
+            try self.fileManager.removeItem(at: self.stateURL)
+        } catch {
+            throw DataGatewayClientError.persistenceFailed(
+                "failed to remove qiongche sdk state: \(error.localizedDescription)"
+            )
         }
     }
 
