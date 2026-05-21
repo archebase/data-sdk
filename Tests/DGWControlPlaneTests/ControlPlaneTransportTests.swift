@@ -94,6 +94,31 @@ import GRPCCore
     #expect(invocations[4].requestSummary == "upload-1:128:3:\"etag-1\":67108864")
 }
 
+@Test func objectClientListsObjectsWithUserAuthorization() async throws {
+    let stub = ObjectServiceClientStub()
+    let client = ObjectControlPlaneClient(client: stub, requestTimeout: .seconds(4))
+
+    let response = try await client.listObjects(
+        pageSize: 25,
+        pageToken: "page-1",
+        filter: "status:verified",
+        authorizationHeader: "Bearer user-token"
+    )
+
+    #expect(response.nextPageToken == "page-2")
+    #expect(response.objects.map(\.fileID) == ["file-1"])
+
+    let invocations = await stub.invocations()
+    #expect(invocations == [
+        InvocationRecord(
+            method: "ListObjects",
+            metadata: ["authorization": ["Bearer user-token"]],
+            timeout: .seconds(4),
+            requestSummary: "25:page-1:status:verified"
+        ),
+    ])
+}
+
 @Test func deviceInitTransportBuildsRequestWithoutAuthorization() async throws {
     let stub = DeviceInitServiceClientStub()
     let transport = DeviceInitServiceClientTransport(client: stub, requestTimeout: .seconds(6))
@@ -316,6 +341,59 @@ private actor GatewayServiceClientStub: Archebase_DataGateway_V1_DataGatewayServ
                 requestSummary: requestSummary
             )
         )
+    }
+}
+
+private actor ObjectServiceClientStub: Archebase_DataGateway_V1_DataGatewayObjectService.ClientProtocol {
+    private var records: [InvocationRecord] = []
+
+    func listObjects<Result>(
+        request: ClientRequest<Archebase_DataGateway_V1_ListObjectsRequest>,
+        serializer: some MessageSerializer<Archebase_DataGateway_V1_ListObjectsRequest>,
+        deserializer: some MessageDeserializer<Archebase_DataGateway_V1_ListObjectsResponse>,
+        options: CallOptions,
+        onResponse handleResponse: @Sendable @escaping (ClientResponse<Archebase_DataGateway_V1_ListObjectsResponse>) async throws -> Result
+    ) async throws -> Result where Result : Sendable {
+        let summary = "\(request.message.pageSize):\(request.message.pageToken):\(request.message.filter)"
+        self.records.append(
+            InvocationRecord(
+                method: "ListObjects",
+                metadata: Dictionary(uniqueKeysWithValues: [
+                    ("authorization", Array(request.metadata[stringValues: "authorization"])),
+                ]),
+                timeout: options.timeout,
+                requestSummary: summary
+            )
+        )
+
+        var object = Archebase_DataGateway_V1_DataObject()
+        object.objectID = "object-1"
+        object.fileID = "file-1"
+        object.status = .verified
+        object.sizeBytes = 128
+        object.createdAtUnix = 1_700_000_001
+        object.uploadedAtUnix = 1_700_000_002
+        object.verifiedAtUnix = 1_700_000_003
+        object.etag = "\"etag-1\""
+
+        var response = Archebase_DataGateway_V1_ListObjectsResponse()
+        response.objects = [object]
+        response.nextPageToken = "page-2"
+        return try await handleResponse(ClientResponse(message: response))
+    }
+
+    func requestDownload<Result>(
+        request: ClientRequest<Archebase_DataGateway_V1_RequestDownloadRequest>,
+        serializer: some MessageSerializer<Archebase_DataGateway_V1_RequestDownloadRequest>,
+        deserializer: some MessageDeserializer<Archebase_DataGateway_V1_RequestDownloadResponse>,
+        options: CallOptions,
+        onResponse handleResponse: @Sendable @escaping (ClientResponse<Archebase_DataGateway_V1_RequestDownloadResponse>) async throws -> Result
+    ) async throws -> Result where Result : Sendable {
+        return try await handleResponse(ClientResponse(message: Archebase_DataGateway_V1_RequestDownloadResponse()))
+    }
+
+    func invocations() -> [InvocationRecord] {
+        self.records
     }
 }
 

@@ -128,8 +128,14 @@ import Testing
     #expect(logs.contains(where: { $0.operation == "refresh_credentials" && $0.message == "[REDACTED]" }))
 
     let metrics = await metricRecorder.events()
-    #expect(metrics.contains(where: { $0.name == "upload_part" && $0.dimensions["upload_id"] == "upload-1" }))
-    #expect(metrics.contains(where: { $0.name == "credentials_refresh" && $0.dimensions["upload_id"] == "upload-1" }))
+    let recordedUploadPartMetric = metrics.contains { event in
+        event.name == "upload_part" && event.dimensions["upload_id"] == "upload-1"
+    }
+    let recordedCredentialRefreshMetric = metrics.contains { event in
+        event.name == "credentials_refresh" && event.dimensions["upload_id"] == "upload-1"
+    }
+    #expect(recordedUploadPartMetric)
+    #expect(recordedCredentialRefreshMetric)
 }
 
 @Test func contractPartSizeBytesControlsChunkSplitting() async throws {

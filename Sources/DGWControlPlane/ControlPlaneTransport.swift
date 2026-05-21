@@ -204,6 +204,13 @@ package struct ControlPlaneClientFactory: Sendable {
         }
     }
 
+    package func makeObjectClient() throws -> ManagedControlPlaneServiceClient<any Archebase_DataGateway_V1_DataGatewayObjectService.ClientProtocol> {
+        try ManagedControlPlaneServiceClient(configuration: self.configuration) { grpcClient in
+            Archebase_DataGateway_V1_DataGatewayObjectService.Client(wrapping: grpcClient)
+                as any Archebase_DataGateway_V1_DataGatewayObjectService.ClientProtocol
+        }
+    }
+
     package func makeDeviceInitTransport() throws -> ManagedControlPlaneServiceClient<any DeviceInitTransport> {
         try ManagedControlPlaneServiceClient(configuration: self.configuration) { grpcClient in
             let client = Archebase_DataGateway_V1_DeviceInitService.Client(wrapping: grpcClient)
@@ -422,6 +429,50 @@ package final class GatewayControlPlaneClient<Client: Archebase_DataGateway_V1_D
 
         let options = self.optionsBuilder.make(authorizationHeader: authorizationHeader)
         let response: ClientResponse<Archebase_DataGateway_V1_CompleteUploadResponse> = try await self.client.completeUpload(
+            request,
+            metadata: options.metadata,
+            options: options.callOptions,
+            onResponse: { response in response }
+        )
+
+        return try response.message
+    }
+}
+
+package protocol ObjectControlPlaneClientProtocol: Sendable {
+    func listObjects(
+        pageSize: Int32,
+        pageToken: String,
+        filter: String,
+        authorizationHeader: String
+    ) async throws -> Archebase_DataGateway_V1_ListObjectsResponse
+}
+
+package final class ObjectControlPlaneClient<Client: Archebase_DataGateway_V1_DataGatewayObjectService.ClientProtocol>: ObjectControlPlaneClientProtocol, @unchecked Sendable {
+    private let client: Client
+    private let optionsBuilder: ControlPlaneRequestOptionsBuilder
+
+    package init(
+        client: Client,
+        requestTimeout: Duration
+    ) {
+        self.client = client
+        self.optionsBuilder = ControlPlaneRequestOptionsBuilder(requestTimeout: requestTimeout)
+    }
+
+    package func listObjects(
+        pageSize: Int32,
+        pageToken: String,
+        filter: String,
+        authorizationHeader: String
+    ) async throws -> Archebase_DataGateway_V1_ListObjectsResponse {
+        var request = Archebase_DataGateway_V1_ListObjectsRequest()
+        request.pageSize = pageSize
+        request.pageToken = pageToken
+        request.filter = filter
+
+        let options = self.optionsBuilder.make(authorizationHeader: authorizationHeader)
+        let response: ClientResponse<Archebase_DataGateway_V1_ListObjectsResponse> = try await self.client.listObjects(
             request,
             metadata: options.metadata,
             options: options.callOptions,

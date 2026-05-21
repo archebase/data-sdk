@@ -677,15 +677,28 @@ extension Archebase_DataGateway_V1_DataGatewayService.ClientProtocol {
     }
 }
 
-// MARK: - archebase.data_gateway.v1.DataGatewayDownloadService
+// MARK: - archebase.data_gateway.v1.DataGatewayObjectService
 
-/// Namespace containing generated types for the "archebase.data_gateway.v1.DataGatewayDownloadService" service.
+/// Namespace containing generated types for the "archebase.data_gateway.v1.DataGatewayObjectService" service.
 @available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
-public enum Archebase_DataGateway_V1_DataGatewayDownloadService: Sendable {
-    /// Service descriptor for the "archebase.data_gateway.v1.DataGatewayDownloadService" service.
-    public static let descriptor = GRPCCore.ServiceDescriptor(fullyQualifiedService: "archebase.data_gateway.v1.DataGatewayDownloadService")
+public enum Archebase_DataGateway_V1_DataGatewayObjectService: Sendable {
+    /// Service descriptor for the "archebase.data_gateway.v1.DataGatewayObjectService" service.
+    public static let descriptor = GRPCCore.ServiceDescriptor(fullyQualifiedService: "archebase.data_gateway.v1.DataGatewayObjectService")
     /// Namespace for method metadata.
     public enum Method: Sendable {
+        /// Namespace for "ListObjects" metadata.
+        public enum ListObjects: Sendable {
+            /// Request type for "ListObjects".
+            public typealias Input = Archebase_DataGateway_V1_ListObjectsRequest
+            /// Response type for "ListObjects".
+            public typealias Output = Archebase_DataGateway_V1_ListObjectsResponse
+            /// Descriptor for "ListObjects".
+            public static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "archebase.data_gateway.v1.DataGatewayObjectService"),
+                method: "ListObjects",
+                type: .unary
+            )
+        }
         /// Namespace for "RequestDownload" metadata.
         public enum RequestDownload: Sendable {
             /// Request type for "RequestDownload".
@@ -694,13 +707,14 @@ public enum Archebase_DataGateway_V1_DataGatewayDownloadService: Sendable {
             public typealias Output = Archebase_DataGateway_V1_RequestDownloadResponse
             /// Descriptor for "RequestDownload".
             public static let descriptor = GRPCCore.MethodDescriptor(
-                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "archebase.data_gateway.v1.DataGatewayDownloadService"),
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "archebase.data_gateway.v1.DataGatewayObjectService"),
                 method: "RequestDownload",
                 type: .unary
             )
         }
-        /// Descriptors for all methods in the "archebase.data_gateway.v1.DataGatewayDownloadService" service.
+        /// Descriptors for all methods in the "archebase.data_gateway.v1.DataGatewayObjectService" service.
         public static let descriptors: [GRPCCore.MethodDescriptor] = [
+            ListObjects.descriptor,
             RequestDownload.descriptor
         ]
     }
@@ -708,26 +722,51 @@ public enum Archebase_DataGateway_V1_DataGatewayDownloadService: Sendable {
 
 @available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension GRPCCore.ServiceDescriptor {
-    /// Service descriptor for the "archebase.data_gateway.v1.DataGatewayDownloadService" service.
-    public static let archebase_dataGateway_v1_DataGatewayDownloadService = GRPCCore.ServiceDescriptor(fullyQualifiedService: "archebase.data_gateway.v1.DataGatewayDownloadService")
+    /// Service descriptor for the "archebase.data_gateway.v1.DataGatewayObjectService" service.
+    public static let archebase_dataGateway_v1_DataGatewayObjectService = GRPCCore.ServiceDescriptor(fullyQualifiedService: "archebase.data_gateway.v1.DataGatewayObjectService")
 }
 
-// MARK: archebase.data_gateway.v1.DataGatewayDownloadService (client)
+// MARK: archebase.data_gateway.v1.DataGatewayObjectService (client)
 
 @available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
-extension Archebase_DataGateway_V1_DataGatewayDownloadService {
-    /// Generated client protocol for the "archebase.data_gateway.v1.DataGatewayDownloadService" service.
+extension Archebase_DataGateway_V1_DataGatewayObjectService {
+    /// Generated client protocol for the "archebase.data_gateway.v1.DataGatewayObjectService" service.
     ///
     /// You don't need to implement this protocol directly, use the generated
     /// implementation, ``Client``.
     ///
     /// > Source IDL Documentation:
     /// >
-    /// > SDK-facing download authorization service exposed on the public gRPC port.
+    /// > SDK-facing object discovery and download authorization service exposed on
+    /// > the public gRPC port.
     /// >
-    /// > This service uses user access JWT authentication and returns short-lived
+    /// > This service uses user access JWT authentication. Object listing returns
+    /// > logical object IDs visible to the caller; download returns short-lived
     /// > presigned read operations rather than cloud credentials.
     public protocol ClientProtocol: Sendable {
+        /// Call the "ListObjects" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Lists verified logical objects visible to the authenticated user.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Archebase_DataGateway_V1_ListObjectsRequest` message.
+        ///   - serializer: A serializer for `Archebase_DataGateway_V1_ListObjectsRequest` messages.
+        ///   - deserializer: A deserializer for `Archebase_DataGateway_V1_ListObjectsResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func listObjects<Result>(
+            request: GRPCCore.ClientRequest<Archebase_DataGateway_V1_ListObjectsRequest>,
+            serializer: some GRPCCore.MessageSerializer<Archebase_DataGateway_V1_ListObjectsRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Archebase_DataGateway_V1_ListObjectsResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_ListObjectsResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
         /// Call the "RequestDownload" method.
         ///
         /// > Source IDL Documentation:
@@ -752,7 +791,7 @@ extension Archebase_DataGateway_V1_DataGatewayDownloadService {
         ) async throws -> Result where Result: Sendable
     }
 
-    /// Generated client for the "archebase.data_gateway.v1.DataGatewayDownloadService" service.
+    /// Generated client for the "archebase.data_gateway.v1.DataGatewayObjectService" service.
     ///
     /// The ``Client`` provides an implementation of ``ClientProtocol`` which wraps
     /// a `GRPCCore.GRPCCClient`. The underlying `GRPCClient` provides the long-lived
@@ -760,9 +799,11 @@ extension Archebase_DataGateway_V1_DataGatewayDownloadService {
     ///
     /// > Source IDL Documentation:
     /// >
-    /// > SDK-facing download authorization service exposed on the public gRPC port.
+    /// > SDK-facing object discovery and download authorization service exposed on
+    /// > the public gRPC port.
     /// >
-    /// > This service uses user access JWT authentication and returns short-lived
+    /// > This service uses user access JWT authentication. Object listing returns
+    /// > logical object IDs visible to the caller; download returns short-lived
     /// > presigned read operations rather than cloud credentials.
     public struct Client<Transport>: ClientProtocol where Transport: GRPCCore.ClientTransport {
         private let client: GRPCCore.GRPCClient<Transport>
@@ -773,6 +814,40 @@ extension Archebase_DataGateway_V1_DataGatewayDownloadService {
         ///   - client: A `GRPCCore.GRPCClient` providing a communication channel to the service.
         public init(wrapping client: GRPCCore.GRPCClient<Transport>) {
             self.client = client
+        }
+
+        /// Call the "ListObjects" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Lists verified logical objects visible to the authenticated user.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Archebase_DataGateway_V1_ListObjectsRequest` message.
+        ///   - serializer: A serializer for `Archebase_DataGateway_V1_ListObjectsRequest` messages.
+        ///   - deserializer: A deserializer for `Archebase_DataGateway_V1_ListObjectsResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        public func listObjects<Result>(
+            request: GRPCCore.ClientRequest<Archebase_DataGateway_V1_ListObjectsRequest>,
+            serializer: some GRPCCore.MessageSerializer<Archebase_DataGateway_V1_ListObjectsRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Archebase_DataGateway_V1_ListObjectsResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_ListObjectsResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Archebase_DataGateway_V1_DataGatewayObjectService.Method.ListObjects.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
         }
 
         /// Call the "RequestDownload" method.
@@ -801,7 +876,7 @@ extension Archebase_DataGateway_V1_DataGatewayDownloadService {
         ) async throws -> Result where Result: Sendable {
             try await self.client.unary(
                 request: request,
-                descriptor: Archebase_DataGateway_V1_DataGatewayDownloadService.Method.RequestDownload.descriptor,
+                descriptor: Archebase_DataGateway_V1_DataGatewayObjectService.Method.RequestDownload.descriptor,
                 serializer: serializer,
                 deserializer: deserializer,
                 options: options,
@@ -813,7 +888,36 @@ extension Archebase_DataGateway_V1_DataGatewayDownloadService {
 
 // Helpers providing default arguments to 'ClientProtocol' methods.
 @available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
-extension Archebase_DataGateway_V1_DataGatewayDownloadService.ClientProtocol {
+extension Archebase_DataGateway_V1_DataGatewayObjectService.ClientProtocol {
+    /// Call the "ListObjects" method.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > Lists verified logical objects visible to the authenticated user.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Archebase_DataGateway_V1_ListObjectsRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func listObjects<Result>(
+        request: GRPCCore.ClientRequest<Archebase_DataGateway_V1_ListObjectsRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_ListObjectsResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.listObjects(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Archebase_DataGateway_V1_ListObjectsRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Archebase_DataGateway_V1_ListObjectsResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
     /// Call the "RequestDownload" method.
     ///
     /// > Source IDL Documentation:
@@ -846,7 +950,40 @@ extension Archebase_DataGateway_V1_DataGatewayDownloadService.ClientProtocol {
 
 // Helpers providing sugared APIs for 'ClientProtocol' methods.
 @available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
-extension Archebase_DataGateway_V1_DataGatewayDownloadService.ClientProtocol {
+extension Archebase_DataGateway_V1_DataGatewayObjectService.ClientProtocol {
+    /// Call the "ListObjects" method.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > Lists verified logical objects visible to the authenticated user.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func listObjects<Result>(
+        _ message: Archebase_DataGateway_V1_ListObjectsRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_ListObjectsResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Archebase_DataGateway_V1_ListObjectsRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.listObjects(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
     /// Call the "RequestDownload" method.
     ///
     /// > Source IDL Documentation:

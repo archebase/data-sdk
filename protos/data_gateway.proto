@@ -17,11 +17,15 @@ service DataGatewayService {
       returns (CompleteUploadResponse);
 }
 
-// SDK-facing download authorization service exposed on the public gRPC port.
+// SDK-facing object discovery and download authorization service exposed on
+// the public gRPC port.
 //
-// This service uses user access JWT authentication and returns short-lived
+// This service uses user access JWT authentication. Object listing returns
+// logical object IDs visible to the caller; download returns short-lived
 // presigned read operations rather than cloud credentials.
-service DataGatewayDownloadService {
+service DataGatewayObjectService {
+  // Lists verified logical objects visible to the authenticated user.
+  rpc ListObjects(ListObjectsRequest) returns (ListObjectsResponse);
   // Authorizes direct object downloads for the requested file IDs.
   rpc RequestDownload(RequestDownloadRequest)
       returns (RequestDownloadResponse);
@@ -191,6 +195,56 @@ message CompleteUploadRequest {
 }
 
 message CompleteUploadResponse {}
+
+// User-visible lifecycle state for a logical data object.
+enum DataObjectStatus {
+  DATA_OBJECT_STATUS_UNSPECIFIED = 0;
+  DATA_OBJECT_STATUS_CREATED = 1;
+  DATA_OBJECT_STATUS_UPLOADED = 2;
+  DATA_OBJECT_STATUS_VERIFIED = 3;
+  DATA_OBJECT_STATUS_BAD = 4;
+  DATA_OBJECT_STATUS_ABORTED = 5;
+  DATA_OBJECT_STATUS_INVALID = 6;
+}
+
+// Requests one page of verified logical objects visible to the authenticated user.
+message ListObjectsRequest {
+  // Maximum number of objects to return.
+  int32 page_size = 1;
+  // Opaque continuation token returned by a previous page. The token is only
+  // valid with the same filter used to obtain it.
+  string page_token = 2;
+  // Server-side filter expression. Status filters are limited to verified objects.
+  string filter = 3;
+}
+
+// One logical object visible to the authenticated user.
+message DataObject {
+  // Customer-facing object identifier. Currently equal to file_id.
+  string object_id = 1;
+  // Data Gateway file_id used by download and copy APIs.
+  string file_id = 2;
+  // Current upload lifecycle state.
+  DataObjectStatus status = 3;
+  // Object size in bytes, if known.
+  int64 size_bytes = 4;
+  // Unix seconds when the object record was created, or zero if unknown.
+  int64 created_at_unix = 6;
+  // Unix seconds when upload completed, or zero if not uploaded.
+  int64 uploaded_at_unix = 7;
+  // Unix seconds when verification completed, or zero if not verified.
+  int64 verified_at_unix = 8;
+  // Object ETag recorded during upload, if known.
+  string etag = 9;
+}
+
+// Returns one page of logical objects and pagination metadata.
+message ListObjectsResponse {
+  // Objects in page order.
+  repeated DataObject objects = 1;
+  // Opaque continuation token for the next page, or empty when exhausted.
+  string next_page_token = 2;
+}
 
 // Requests presigned read operations for file IDs.
 message RequestDownloadRequest {

@@ -293,6 +293,15 @@ struct LocalStackHarnessTests {
     ) { grpcClient in
         Archebase_DataGateway_V1_DataGatewayService.Client(wrapping: grpcClient)
     }
+    let objectTransport = try ManagedControlPlaneServiceClient(
+        configuration: ControlPlaneTransportConfiguration(
+            endpoint: clientConfig.gatewayEndpoint,
+            security: .plaintext,
+            requestTimeout: clientConfig.requestTimeout
+        )
+    ) { grpcClient in
+        Archebase_DataGateway_V1_DataGatewayObjectService.Client(wrapping: grpcClient)
+    }
     let gatewayClient = AnyUploadCoordinatorGatewayClient(
         authProvider: authProvider,
         gatewayServiceClient: gatewayTransport.serviceClient,
@@ -317,7 +326,8 @@ struct LocalStackHarnessTests {
         ),
         runtimeResources: DataGatewayClientRuntimeResources(
             authTransport: authTransport,
-            gatewayTransport: gatewayTransport
+            gatewayTransport: gatewayTransport,
+            objectTransport: objectTransport
         )
     )
 

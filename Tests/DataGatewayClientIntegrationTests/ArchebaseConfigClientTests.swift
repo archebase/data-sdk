@@ -147,6 +147,41 @@ import Testing
     #expect(pending.isEmpty)
 }
 
+@Test func listObjectsUsesUserAuthorizationAndMapsPage() async throws {
+    let root = try temporaryRoot()
+    let objectClient = RecordingObjectClient()
+    let coordinator = UploadCoordinator(
+        executionPolicy: makeTestExecutionPolicy(),
+        dependencies: UploadCoordinatorDependencies(
+            gatewayClient: RecordingGatewayClient(),
+            stateStore: UploadStateStore(persistRoot: root),
+            fileCoordinator: FileStagingCoordinator(stagingRoot: root.appendingPathComponent("staging", isDirectory: true)),
+            ossClientFactory: { _ in FakeMultipartSession() }
+        )
+    )
+    let client = DataGatewayClient(uploadCoordinator: coordinator, objectClient: objectClient)
+
+    let page = try await client.listObjects(
+        ListObjectsOptions(pageSize: 50, pageToken: "page-1", filter: "status:verified"),
+        authorizationHeader: "Bearer user-token"
+    )
+
+    #expect(page.nextPageToken == "page-2")
+    #expect(page.objects == [
+        DataObject(
+            objectID: "object-1",
+            fileID: "file-1",
+            status: .verified,
+            sizeBytes: 1024,
+            createdAtUnix: 1_700_000_001,
+            uploadedAtUnix: 1_700_000_002,
+            verifiedAtUnix: 1_700_000_003,
+            etag: "\"etag-1\""
+        ),
+    ])
+    #expect(await objectClient.lastCall == "50:page-1:status:verified:Bearer user-token")
+}
+
 private func temporaryRoot() throws -> URL {
     let root = FileManager.default.temporaryDirectory
         .appendingPathComponent("archebase-client-config-tests", isDirectory: true)
@@ -180,6 +215,34 @@ private func makeTestExecutionPolicy() -> UploadExecutionPolicy {
             copyExternalFileIntoManagedStaging: true
         )
     )
+}
+
+private actor RecordingObjectClient: ObjectControlPlaneClientProtocol {
+    private(set) var lastCall: String?
+
+    func listObjects(
+        pageSize: Int32,
+        pageToken: String,
+        filter: String,
+        authorizationHeader: String
+    ) async throws -> Archebase_DataGateway_V1_ListObjectsResponse {
+        self.lastCall = "\(pageSize):\(pageToken):\(filter):\(authorizationHeader)"
+
+        var object = Archebase_DataGateway_V1_DataObject()
+        object.objectID = "object-1"
+        object.fileID = "file-1"
+        object.status = .verified
+        object.sizeBytes = 1024
+        object.createdAtUnix = 1_700_000_001
+        object.uploadedAtUnix = 1_700_000_002
+        object.verifiedAtUnix = 1_700_000_003
+        object.etag = "\"etag-1\""
+
+        var response = Archebase_DataGateway_V1_ListObjectsResponse()
+        response.objects = [object]
+        response.nextPageToken = "page-2"
+        return response
+    }
 }
 
 private actor RecordingGatewayClient: UploadCoordinatorGatewayClient {
