@@ -13,7 +13,7 @@ public enum DataGatewayClientModule {
     public static let name = "DataGatewayClient"
 
     /// SDK version reported to the device initialization service.
-    public static let version = "0.1.0"
+    public static let version = "0.1.1"
 }
 
 /// Public configuration for device initialization and reinitialization.
