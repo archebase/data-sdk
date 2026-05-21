@@ -209,8 +209,6 @@ private func makeResponse(
     response.accessToken = accessToken
     response.expiresAtUnix = expiresAtUnix
     response.tokenType = tokenType
-    response.keyID = "key-1"
-    response.keyPrefix = "ak_demo"
     return response
 }
 

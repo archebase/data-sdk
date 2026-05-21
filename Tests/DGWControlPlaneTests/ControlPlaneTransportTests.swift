@@ -74,6 +74,7 @@ import GRPCCore
         rawTags: ["scene": "robot"],
         completedPartCount: 3,
         ossObjectEtag: "\"etag-1\"",
+        partSizeBytes: 64 * 1024 * 1024,
         authorizationHeader: "Bearer token-1"
     )
 
@@ -90,7 +91,7 @@ import GRPCCore
     #expect(invocations[3].method == "AbortUpload")
     #expect(invocations[3].requestSummary == "logical-1:aborted by client")
     #expect(invocations[4].method == "CompleteUpload")
-    #expect(invocations[4].requestSummary == "upload-1:128:3:\"etag-1\"")
+    #expect(invocations[4].requestSummary == "upload-1:128:3:\"etag-1\":67108864")
 }
 
 @Test func deviceInitTransportBuildsRequestWithoutAuthorization() async throws {
@@ -294,7 +295,7 @@ private actor GatewayServiceClientStub: Archebase_DataGateway_V1_DataGatewayServ
         options: CallOptions,
         onResponse handleResponse: @Sendable @escaping (ClientResponse<Archebase_DataGateway_V1_CompleteUploadResponse>) async throws -> Result
     ) async throws -> Result where Result : Sendable {
-        let summary = "\(request.message.uploadID):\(request.message.fileSize):\(request.message.completedPartCount):\(request.message.ossObjectEtag)"
+        let summary = "\(request.message.uploadID):\(request.message.fileSize):\(request.message.completedPartCount):\(request.message.ossObjectEtag):\(request.message.partSizeBytes)"
         self.record(method: "CompleteUpload", metadata: request.metadata, timeout: options.timeout, requestSummary: summary)
 
         return try await handleResponse(ClientResponse(message: Archebase_DataGateway_V1_CompleteUploadResponse()))

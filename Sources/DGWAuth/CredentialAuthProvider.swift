@@ -62,7 +62,7 @@ package struct AuthServiceClientTransport<Client: Archebase_Auth_V1_AuthService.
         timeout: Duration
     ) async throws -> Archebase_Auth_V1_ExchangeCredentialResponse {
         var request = Archebase_Auth_V1_ExchangeCredentialRequest()
-        request.credentialBase64 = credentialBase64
+        request.credential = credentialBase64
 
         var options = CallOptions.defaults
         options.timeout = timeout

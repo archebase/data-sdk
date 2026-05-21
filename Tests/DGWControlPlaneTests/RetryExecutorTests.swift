@@ -247,6 +247,7 @@ private actor MockGatewayClient: GatewayControlPlaneClientProtocol {
         rawTags: [String : String],
         completedPartCount: Int32,
         ossObjectEtag: String,
+        partSizeBytes: Int64,
         authorizationHeader: String
     ) async throws -> Archebase_DataGateway_V1_CompleteUploadResponse {
         guard case .complete(let result) = self.results.removeFirst() else {
