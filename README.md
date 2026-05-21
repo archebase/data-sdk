@@ -63,7 +63,7 @@ DGWStore
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/archebase/data-sdk.git", from: "0.1.0")
+    .package(url: "https://github.com/archebase/data-sdk.git", from: "0.1.1")
 ]
 ```
 
