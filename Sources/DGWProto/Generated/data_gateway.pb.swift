@@ -8,6 +8,11 @@
 // For information on using the generated types, please see the documentation:
 //   https://github.com/apple/swift-protobuf/
 
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
+import Foundation
+#endif
 import SwiftProtobuf
 
 // If the compiler emits an error on this type, it is because this file
@@ -352,6 +357,8 @@ public struct Archebase_DataGateway_V1_InitDeviceRequest: Sendable {
 }
 
 /// Request sent by SDKs when explicitly rotating an existing upload API key.
+/// This currently mirrors InitDeviceRequest, but remains a separate message so
+/// reinit-only fields can be added without changing first-time init semantics.
 public struct Archebase_DataGateway_V1_ReinitDeviceRequest: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -377,7 +384,7 @@ public struct Archebase_DataGateway_V1_InitDeviceResponse: Sendable {
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  /// Base64-encoded credential returned by auth and used for later uploads.
+  /// Opaque credential returned by auth and used for later uploads.
   public var apiKey: String = String()
 
   /// Platform-approved device tags replayed on every subsequent upload.
@@ -408,6 +415,10 @@ public struct Archebase_DataGateway_V1_UploadCredentials: Sendable {
   public var stsExpireAtUnix: Int64 = 0
 
   public var partSizeBytes: Int64 = 0
+
+  public var objectStoreBackend: String = String()
+
+  public var objectStoreRegion: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -582,6 +593,11 @@ public struct Archebase_DataGateway_V1_CompleteUploadRequest: Sendable {
   public var completedPartCount: Int32 = 0
 
   public var ossObjectEtag: String = String()
+
+  /// Upload part size issued by data-gateway for this upload session.
+  /// New SDKs echo it back so completion validation remains stable if
+  /// gateway config changes between credential issuance and completion.
+  public var partSizeBytes: Int64 = 0
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -1121,6 +1137,67 @@ public struct Archebase_DataGateway_V1_PresignObjectResponse: Sendable {
   fileprivate var _write: Archebase_DataGateway_V1_PresignedOperation? = nil
 }
 
+/// Requests a bounded backend-only object read.
+public struct Archebase_DataGateway_V1_ReadObjectRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// Object to read.
+  public var object: Archebase_DataGateway_V1_StorageObject {
+    get {_object ?? Archebase_DataGateway_V1_StorageObject()}
+    set {_object = newValue}
+  }
+  /// Returns true if `object` has been explicitly set.
+  public var hasObject: Bool {self._object != nil}
+  /// Clears the value of `object`. Subsequent reads from it will return its default value.
+  public mutating func clearObject() {self._object = nil}
+
+  /// Maximum number of bytes the caller is willing to receive.
+  public var maxBytes: Int64 = 0
+
+  /// Allowed response content types. Empty means no content-type constraint.
+  public var allowedContentTypes: [String] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _object: Archebase_DataGateway_V1_StorageObject? = nil
+}
+
+/// Returns bytes and metadata for one backend-only object read.
+public struct Archebase_DataGateway_V1_ReadObjectResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// Object that was read.
+  public var object: Archebase_DataGateway_V1_StorageObject {
+    get {_object ?? Archebase_DataGateway_V1_StorageObject()}
+    set {_object = newValue}
+  }
+  /// Returns true if `object` has been explicitly set.
+  public var hasObject: Bool {self._object != nil}
+  /// Clears the value of `object`. Subsequent reads from it will return its default value.
+  public mutating func clearObject() {self._object = nil}
+
+  /// Full object content. The service rejects objects larger than max_bytes.
+  public var content: Data = Data()
+
+  /// Object content type, if known.
+  public var contentType: String = String()
+
+  /// Object entity tag, if known.
+  public var etag: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _object: Archebase_DataGateway_V1_StorageObject? = nil
+}
+
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
 
 fileprivate let _protobuf_package = "archebase.data_gateway.v1"
@@ -1266,7 +1343,7 @@ extension Archebase_DataGateway_V1_InitDeviceResponse: SwiftProtobuf.Message, Sw
 
 extension Archebase_DataGateway_V1_UploadCredentials: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".UploadCredentials"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}bucket\0\u{1}endpoint\0\u{3}object_key\0\u{3}sts_access_key_id\0\u{3}sts_access_key_secret\0\u{3}sts_security_token\0\u{3}sts_expire_at_unix\0\u{3}part_size_bytes\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}bucket\0\u{1}endpoint\0\u{3}object_key\0\u{3}sts_access_key_id\0\u{3}sts_access_key_secret\0\u{3}sts_security_token\0\u{3}sts_expire_at_unix\0\u{3}part_size_bytes\0\u{3}object_store_backend\0\u{3}object_store_region\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1282,6 +1359,8 @@ extension Archebase_DataGateway_V1_UploadCredentials: SwiftProtobuf.Message, Swi
       case 6: try { try decoder.decodeSingularStringField(value: &self.stsSecurityToken) }()
       case 7: try { try decoder.decodeSingularInt64Field(value: &self.stsExpireAtUnix) }()
       case 8: try { try decoder.decodeSingularInt64Field(value: &self.partSizeBytes) }()
+      case 9: try { try decoder.decodeSingularStringField(value: &self.objectStoreBackend) }()
+      case 10: try { try decoder.decodeSingularStringField(value: &self.objectStoreRegion) }()
       default: break
       }
     }
@@ -1312,6 +1391,12 @@ extension Archebase_DataGateway_V1_UploadCredentials: SwiftProtobuf.Message, Swi
     if self.partSizeBytes != 0 {
       try visitor.visitSingularInt64Field(value: self.partSizeBytes, fieldNumber: 8)
     }
+    if !self.objectStoreBackend.isEmpty {
+      try visitor.visitSingularStringField(value: self.objectStoreBackend, fieldNumber: 9)
+    }
+    if !self.objectStoreRegion.isEmpty {
+      try visitor.visitSingularStringField(value: self.objectStoreRegion, fieldNumber: 10)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -1324,6 +1409,8 @@ extension Archebase_DataGateway_V1_UploadCredentials: SwiftProtobuf.Message, Swi
     if lhs.stsSecurityToken != rhs.stsSecurityToken {return false}
     if lhs.stsExpireAtUnix != rhs.stsExpireAtUnix {return false}
     if lhs.partSizeBytes != rhs.partSizeBytes {return false}
+    if lhs.objectStoreBackend != rhs.objectStoreBackend {return false}
+    if lhs.objectStoreRegion != rhs.objectStoreRegion {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -1679,7 +1766,7 @@ extension Archebase_DataGateway_V1_AbortUploadResponse: SwiftProtobuf.Message, S
 
 extension Archebase_DataGateway_V1_CompleteUploadRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".CompleteUploadRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}upload_id\0\u{3}file_size\0\u{3}raw_tags\0\u{3}completed_part_count\0\u{3}oss_object_etag\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}upload_id\0\u{3}file_size\0\u{3}raw_tags\0\u{3}completed_part_count\0\u{3}oss_object_etag\0\u{3}part_size_bytes\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1692,6 +1779,7 @@ extension Archebase_DataGateway_V1_CompleteUploadRequest: SwiftProtobuf.Message,
       case 3: try { try decoder.decodeMapField(fieldType: SwiftProtobuf._ProtobufMap<SwiftProtobuf.ProtobufString,SwiftProtobuf.ProtobufString>.self, value: &self.rawTags) }()
       case 4: try { try decoder.decodeSingularInt32Field(value: &self.completedPartCount) }()
       case 5: try { try decoder.decodeSingularStringField(value: &self.ossObjectEtag) }()
+      case 6: try { try decoder.decodeSingularInt64Field(value: &self.partSizeBytes) }()
       default: break
       }
     }
@@ -1713,6 +1801,9 @@ extension Archebase_DataGateway_V1_CompleteUploadRequest: SwiftProtobuf.Message,
     if !self.ossObjectEtag.isEmpty {
       try visitor.visitSingularStringField(value: self.ossObjectEtag, fieldNumber: 5)
     }
+    if self.partSizeBytes != 0 {
+      try visitor.visitSingularInt64Field(value: self.partSizeBytes, fieldNumber: 6)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -1722,6 +1813,7 @@ extension Archebase_DataGateway_V1_CompleteUploadRequest: SwiftProtobuf.Message,
     if lhs.rawTags != rhs.rawTags {return false}
     if lhs.completedPartCount != rhs.completedPartCount {return false}
     if lhs.ossObjectEtag != rhs.ossObjectEtag {return false}
+    if lhs.partSizeBytes != rhs.partSizeBytes {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -2600,6 +2692,99 @@ extension Archebase_DataGateway_V1_PresignObjectResponse: SwiftProtobuf.Message,
     if lhs._read != rhs._read {return false}
     if lhs._write != rhs._write {return false}
     if lhs.expiresAtUnix != rhs.expiresAtUnix {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Archebase_DataGateway_V1_ReadObjectRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ReadObjectRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}object\0\u{3}max_bytes\0\u{3}allowed_content_types\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._object) }()
+      case 2: try { try decoder.decodeSingularInt64Field(value: &self.maxBytes) }()
+      case 3: try { try decoder.decodeRepeatedStringField(value: &self.allowedContentTypes) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._object {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
+    if self.maxBytes != 0 {
+      try visitor.visitSingularInt64Field(value: self.maxBytes, fieldNumber: 2)
+    }
+    if !self.allowedContentTypes.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.allowedContentTypes, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Archebase_DataGateway_V1_ReadObjectRequest, rhs: Archebase_DataGateway_V1_ReadObjectRequest) -> Bool {
+    if lhs._object != rhs._object {return false}
+    if lhs.maxBytes != rhs.maxBytes {return false}
+    if lhs.allowedContentTypes != rhs.allowedContentTypes {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Archebase_DataGateway_V1_ReadObjectResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ReadObjectResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}object\0\u{1}content\0\u{3}content_type\0\u{1}etag\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._object) }()
+      case 2: try { try decoder.decodeSingularBytesField(value: &self.content) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.contentType) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.etag) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._object {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
+    if !self.content.isEmpty {
+      try visitor.visitSingularBytesField(value: self.content, fieldNumber: 2)
+    }
+    if !self.contentType.isEmpty {
+      try visitor.visitSingularStringField(value: self.contentType, fieldNumber: 3)
+    }
+    if !self.etag.isEmpty {
+      try visitor.visitSingularStringField(value: self.etag, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Archebase_DataGateway_V1_ReadObjectResponse, rhs: Archebase_DataGateway_V1_ReadObjectResponse) -> Bool {
+    if lhs._object != rhs._object {return false}
+    if lhs.content != rhs.content {return false}
+    if lhs.contentType != rhs.contentType {return false}
+    if lhs.etag != rhs.etag {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

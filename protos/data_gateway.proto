@@ -2,9 +2,10 @@ syntax = "proto3";
 
 package archebase.data_gateway.v1;
 
-import "common.proto";
-
 service DataGatewayService {
+  // Upload RPCs are scoped exclusively by the bearer API-key principal
+  // stamped by the public interceptor. Clients never send site_id or any
+  // other owner identifier on this surface.
   rpc CreateLogicalUpload(CreateLogicalUploadRequest)
       returns (CreateLogicalUploadResponse);
   rpc GetUploadRecovery(GetUploadRecoveryRequest)
@@ -67,6 +68,8 @@ message InitDeviceRequest {
 }
 
 // Request sent by SDKs when explicitly rotating an existing upload API key.
+// This currently mirrors InitDeviceRequest, but remains a separate message so
+// reinit-only fields can be added without changing first-time init semantics.
 message ReinitDeviceRequest {
   // Bare platform-assigned device identifier provided by the operator.
   string device_id = 1;
@@ -78,7 +81,7 @@ message ReinitDeviceRequest {
 
 // Response persisted by SDKs into archebase-config.json.
 message InitDeviceResponse {
-  // Base64-encoded credential returned by auth and used for later uploads.
+  // Opaque credential returned by auth and used for later uploads.
   string api_key = 1;
   // Platform-approved device tags replayed on every subsequent upload.
   map<string, string> tags = 2;
@@ -90,6 +93,8 @@ message InitDeviceResponse {
 service InternalStorageService {
   // Generates presigned access for a single object.
   rpc PresignObject(PresignObjectRequest) returns (PresignObjectResponse);
+  // Reads a bounded object payload for backend-only callers.
+  rpc ReadObject(ReadObjectRequest) returns (ReadObjectResponse);
 }
 
 message UploadCredentials {
@@ -101,6 +106,8 @@ message UploadCredentials {
   string sts_security_token = 6;
   int64 sts_expire_at_unix = 7;
   int64 part_size_bytes = 8;
+  string object_store_backend = 9;
+  string object_store_region = 10;
 }
 
 enum UploadRecoveryAction {
@@ -177,6 +184,10 @@ message CompleteUploadRequest {
   map<string, string> raw_tags = 3;
   int32 completed_part_count = 4;
   string oss_object_etag = 5;
+  // Upload part size issued by data-gateway for this upload session.
+  // New SDKs echo it back so completion validation remains stable if
+  // gateway config changes between credential issuance and completion.
+  int64 part_size_bytes = 6;
 }
 
 message CompleteUploadResponse {}
@@ -436,6 +447,28 @@ message PresignObjectResponse {
   PresignedOperation write = 3;
   // Absolute expiration time as Unix seconds.
   int64 expires_at_unix = 4;
+}
+
+// Requests a bounded backend-only object read.
+message ReadObjectRequest {
+  // Object to read.
+  StorageObject object = 1;
+  // Maximum number of bytes the caller is willing to receive.
+  int64 max_bytes = 2;
+  // Allowed response content types. Empty means no content-type constraint.
+  repeated string allowed_content_types = 3;
+}
+
+// Returns bytes and metadata for one backend-only object read.
+message ReadObjectResponse {
+  // Object that was read.
+  StorageObject object = 1;
+  // Full object content. The service rejects objects larger than max_bytes.
+  bytes content = 2;
+  // Object content type, if known.
+  string content_type = 3;
+  // Object entity tag, if known.
+  string etag = 4;
 }
 
 enum DataGatewayErrorCode {

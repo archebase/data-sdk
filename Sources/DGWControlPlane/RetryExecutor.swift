@@ -334,7 +334,8 @@ package final class AuthenticatedGatewayControlPlaneClient<
         fileSize: Int64,
         rawTags: [String: String],
         completedPartCount: Int32,
-        ossObjectEtag: String
+        ossObjectEtag: String,
+        partSizeBytes: Int64
     ) async throws -> Archebase_DataGateway_V1_CompleteUploadResponse {
         try await self.retryExecutor.execute(policy: self.retryPolicy, refreshAuthorization: self.refreshAuthorization) {
             let header = try await self.authProvider.authorizationHeader()
@@ -344,6 +345,7 @@ package final class AuthenticatedGatewayControlPlaneClient<
                 rawTags: rawTags,
                 completedPartCount: completedPartCount,
                 ossObjectEtag: ossObjectEtag,
+                partSizeBytes: partSizeBytes,
                 authorizationHeader: header
             )
         }

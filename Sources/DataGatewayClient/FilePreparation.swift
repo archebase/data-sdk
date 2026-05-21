@@ -821,7 +821,8 @@ package protocol UploadCoordinatorGatewayClient: Sendable {
         fileSize: Int64,
         rawTags: [String: String],
         completedPartCount: Int32,
-        ossObjectEtag: String
+        ossObjectEtag: String,
+        partSizeBytes: Int64
     ) async throws -> Archebase_DataGateway_V1_CompleteUploadResponse
 }
 
@@ -986,7 +987,8 @@ public actor UploadCoordinator {
             fileSize: Int64(preparedFile.fileSize),
             rawTags: request.rawTags,
             completedPartCount: Int32(uploadedDescriptors.count),
-            ossObjectEtag: ossObjectETag
+            ossObjectEtag: ossObjectETag,
+            partSizeBytes: createResponse.credentials.partSizeBytes
         )
 
         let completedAt = await self.dependencies.clock.now()
@@ -1220,7 +1222,8 @@ public actor UploadCoordinator {
             fileSize: Int64(resumedState.fileSize),
             rawTags: resumedState.rawTags,
             completedPartCount: Int32(uploadedDescriptors.count),
-            ossObjectEtag: ossObjectETag
+            ossObjectEtag: ossObjectETag,
+            partSizeBytes: Int64(resumedState.partSizeBytes)
         )
 
         resumedState.phase = .businessCompleting
@@ -1295,7 +1298,8 @@ public actor UploadCoordinator {
             fileSize: Int64(resumedState.fileSize),
             rawTags: resumedState.rawTags,
             completedPartCount: Int32(resumedState.uploadedParts.count),
-            ossObjectEtag: remoteETag
+            ossObjectEtag: remoteETag,
+            partSizeBytes: Int64(resumedState.partSizeBytes)
         )
 
         resumedState.phase = .businessCompleting
@@ -1422,7 +1426,8 @@ public actor UploadCoordinator {
             fileSize: Int64(restartedState.fileSize),
             rawTags: restartedState.rawTags,
             completedPartCount: Int32(uploadedDescriptors.count),
-            ossObjectEtag: ossObjectETag
+            ossObjectEtag: ossObjectETag,
+            partSizeBytes: Int64(restartedState.partSizeBytes)
         )
 
         restartedState.phase = .businessCompleting
@@ -1823,7 +1828,7 @@ package struct AnyUploadCoordinatorGatewayClient: UploadCoordinatorGatewayClient
     private let getUploadRecoveryHandler: @Sendable (String) async throws -> Archebase_DataGateway_V1_GetUploadRecoveryResponse
     private let reissueUploadCredentialsHandler: @Sendable (String) async throws -> Archebase_DataGateway_V1_ReissueUploadCredentialsResponse
     private let abortUploadHandler: @Sendable (String, String) async throws -> Archebase_DataGateway_V1_AbortUploadResponse
-    private let completeUploadHandler: @Sendable (String, Int64, [String: String], Int32, String) async throws -> Archebase_DataGateway_V1_CompleteUploadResponse
+    private let completeUploadHandler: @Sendable (String, Int64, [String: String], Int32, String, Int64) async throws -> Archebase_DataGateway_V1_CompleteUploadResponse
 
     package init(
         authProvider: CredentialAuthProvider,
@@ -1867,14 +1872,15 @@ package struct AnyUploadCoordinatorGatewayClient: UploadCoordinatorGatewayClient
                 throw ControlPlaneErrorMapper.map(error)
             }
         }
-        self.completeUploadHandler = { uploadID, fileSize, rawTags, completedPartCount, ossObjectEtag in
+        self.completeUploadHandler = { uploadID, fileSize, rawTags, completedPartCount, ossObjectEtag, partSizeBytes in
             do {
                 return try await retryingClient.completeUpload(
                     uploadID: uploadID,
                     fileSize: fileSize,
                     rawTags: rawTags,
                     completedPartCount: completedPartCount,
-                    ossObjectEtag: ossObjectEtag
+                    ossObjectEtag: ossObjectEtag,
+                    partSizeBytes: partSizeBytes
                 )
             } catch {
                 throw ControlPlaneErrorMapper.map(error)
@@ -1913,9 +1919,10 @@ package struct AnyUploadCoordinatorGatewayClient: UploadCoordinatorGatewayClient
         fileSize: Int64,
         rawTags: [String : String],
         completedPartCount: Int32,
-        ossObjectEtag: String
+        ossObjectEtag: String,
+        partSizeBytes: Int64
     ) async throws -> Archebase_DataGateway_V1_CompleteUploadResponse {
-        try await self.completeUploadHandler(uploadID, fileSize, rawTags, completedPartCount, ossObjectEtag)
+        try await self.completeUploadHandler(uploadID, fileSize, rawTags, completedPartCount, ossObjectEtag, partSizeBytes)
     }
 }
 

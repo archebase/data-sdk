@@ -223,7 +223,8 @@ private actor RecordingGatewayClient: UploadCoordinatorGatewayClient {
         fileSize: Int64,
         rawTags: [String : String],
         completedPartCount: Int32,
-        ossObjectEtag: String
+        ossObjectEtag: String,
+        partSizeBytes: Int64
     ) async throws -> Archebase_DataGateway_V1_CompleteUploadResponse {
         self.completedRawTags = rawTags
         return Archebase_DataGateway_V1_CompleteUploadResponse()

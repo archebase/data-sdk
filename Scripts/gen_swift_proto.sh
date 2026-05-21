@@ -36,3 +36,6 @@ protoc \
   "$PROTO_ROOT/common.proto" \
   "$PROTO_ROOT/auth.proto" \
   "$PROTO_ROOT/data_gateway.proto"
+
+# protoc-gen-grpc-swift can emit trailing spaces on blank quoted doc-comment lines.
+perl -pi -e 's/[ \t]+$//' "$OUT_DIR"/*.swift

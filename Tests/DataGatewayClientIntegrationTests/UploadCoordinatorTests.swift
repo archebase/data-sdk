@@ -297,12 +297,13 @@ import Testing
         fileSize: Int64(result.fileSize),
         rawTags: completedRawTags,
         completedPartCount: 1,
-        ossObjectEtag: result.ossObjectETag
+        ossObjectEtag: result.ossObjectETag,
+        partSizeBytes: 12
     )
 
     #expect(await gatewayClient.completeInvocations() == [
-        CompleteInvocation(uploadID: "upload-idempotent", fileSize: 12, rawTags: completedRawTags, completedPartCount: 1, ossObjectEtag: "\"etag-object\""),
-        CompleteInvocation(uploadID: "upload-idempotent", fileSize: 12, rawTags: completedRawTags, completedPartCount: 1, ossObjectEtag: "\"etag-object\""),
+        CompleteInvocation(uploadID: "upload-idempotent", fileSize: 12, rawTags: completedRawTags, completedPartCount: 1, ossObjectEtag: "\"etag-object\"", partSizeBytes: 12),
+        CompleteInvocation(uploadID: "upload-idempotent", fileSize: 12, rawTags: completedRawTags, completedPartCount: 1, ossObjectEtag: "\"etag-object\"", partSizeBytes: 12),
     ])
 }
 
@@ -439,7 +440,8 @@ import Testing
             fileSize: Int64(payload.count),
             rawTags: ["scene": "robot"],
             completedPartCount: 1,
-            ossObjectEtag: "\"etag-object\""
+            ossObjectEtag: "\"etag-object\"",
+            partSizeBytes: 64 * 1024 * 1024
         ),
     ])
     #expect(await ossSession.uploadCalls() == [UploadCall(multipartUploadID: "multipart-1", partNumber: 1, size: payload.count)])
@@ -571,7 +573,8 @@ import Testing
             fileSize: 24,
             rawTags: sourceFileNameRawTags(fileName: "demo-multipart.bin"),
             completedPartCount: 3,
-            ossObjectEtag: "\"etag-multipart-object\""
+            ossObjectEtag: "\"etag-multipart-object\"",
+            partSizeBytes: 8
         ),
     ])
     let completedState = try await stateStore.loadSnapshot(logicalUploadID: "logical-1")
@@ -885,7 +888,8 @@ import Testing
             fileSize: 24,
             rawTags: ["scene": "robot"],
             completedPartCount: 3,
-            ossObjectEtag: "\"etag-resume-object\""
+            ossObjectEtag: "\"etag-resume-object\"",
+            partSizeBytes: 8
         ),
     ])
     let completedState = try await stateStore.loadSnapshot(logicalUploadID: "logical-resume")
@@ -1537,7 +1541,8 @@ import Testing
             fileSize: 16,
             rawTags: ["scene": "robot"],
             completedPartCount: 2,
-            ossObjectEtag: "\"etag-head-match\""
+            ossObjectEtag: "\"etag-head-match\"",
+            partSizeBytes: 8
         ),
     ])
 }
@@ -2094,7 +2099,8 @@ private actor MockUploadCoordinatorGatewayClient: UploadCoordinatorGatewayClient
         fileSize: Int64,
         rawTags: [String : String],
         completedPartCount: Int32,
-        ossObjectEtag: String
+        ossObjectEtag: String,
+        partSizeBytes: Int64
     ) async throws -> Archebase_DataGateway_V1_CompleteUploadResponse {
         self.completeCalls.append(
             CompleteInvocation(
@@ -2102,7 +2108,8 @@ private actor MockUploadCoordinatorGatewayClient: UploadCoordinatorGatewayClient
                 fileSize: fileSize,
                 rawTags: rawTags,
                 completedPartCount: completedPartCount,
-                ossObjectEtag: ossObjectEtag
+                ossObjectEtag: ossObjectEtag,
+                partSizeBytes: partSizeBytes
             )
         )
         if let completeError {
@@ -2311,6 +2318,7 @@ private struct CompleteInvocation: Equatable, Sendable {
     let rawTags: [String: String]
     let completedPartCount: Int32
     let ossObjectEtag: String
+    let partSizeBytes: Int64
 }
 
 private func sourceFileNameRawTags(fileName: String) -> [String: String] {

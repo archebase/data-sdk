@@ -113,6 +113,12 @@ extension Archebase_DataGateway_V1_DataGatewayService {
     public protocol ClientProtocol: Sendable {
         /// Call the "CreateLogicalUpload" method.
         ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Upload RPCs are scoped exclusively by the bearer API-key principal
+        /// > stamped by the public interceptor. Clients never send site_id or any
+        /// > other owner identifier on this surface.
+        ///
         /// - Parameters:
         ///   - request: A request containing a single `Archebase_DataGateway_V1_CreateLogicalUploadRequest` message.
         ///   - serializer: A serializer for `Archebase_DataGateway_V1_CreateLogicalUploadRequest` messages.
@@ -224,6 +230,12 @@ extension Archebase_DataGateway_V1_DataGatewayService {
         }
 
         /// Call the "CreateLogicalUpload" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Upload RPCs are scoped exclusively by the bearer API-key principal
+        /// > stamped by the public interceptor. Clients never send site_id or any
+        /// > other owner identifier on this surface.
         ///
         /// - Parameters:
         ///   - request: A request containing a single `Archebase_DataGateway_V1_CreateLogicalUploadRequest` message.
@@ -380,6 +392,12 @@ extension Archebase_DataGateway_V1_DataGatewayService {
 extension Archebase_DataGateway_V1_DataGatewayService.ClientProtocol {
     /// Call the "CreateLogicalUpload" method.
     ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > Upload RPCs are scoped exclusively by the bearer API-key principal
+    /// > stamped by the public interceptor. Clients never send site_id or any
+    /// > other owner identifier on this surface.
+    ///
     /// - Parameters:
     ///   - request: A request containing a single `Archebase_DataGateway_V1_CreateLogicalUploadRequest` message.
     ///   - options: Options to apply to this RPC.
@@ -508,6 +526,12 @@ extension Archebase_DataGateway_V1_DataGatewayService.ClientProtocol {
 @available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Archebase_DataGateway_V1_DataGatewayService.ClientProtocol {
     /// Call the "CreateLogicalUpload" method.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > Upload RPCs are scoped exclusively by the bearer API-key principal
+    /// > stamped by the public interceptor. Clients never send site_id or any
+    /// > other owner identifier on this surface.
     ///
     /// - Parameters:
     ///   - message: request message to send.
@@ -1825,9 +1849,23 @@ public enum Archebase_DataGateway_V1_InternalStorageService: Sendable {
                 type: .unary
             )
         }
+        /// Namespace for "ReadObject" metadata.
+        public enum ReadObject: Sendable {
+            /// Request type for "ReadObject".
+            public typealias Input = Archebase_DataGateway_V1_ReadObjectRequest
+            /// Response type for "ReadObject".
+            public typealias Output = Archebase_DataGateway_V1_ReadObjectResponse
+            /// Descriptor for "ReadObject".
+            public static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "archebase.data_gateway.v1.InternalStorageService"),
+                method: "ReadObject",
+                type: .unary
+            )
+        }
         /// Descriptors for all methods in the "archebase.data_gateway.v1.InternalStorageService" service.
         public static let descriptors: [GRPCCore.MethodDescriptor] = [
-            PresignObject.descriptor
+            PresignObject.descriptor,
+            ReadObject.descriptor
         ]
     }
 }
@@ -1874,6 +1912,29 @@ extension Archebase_DataGateway_V1_InternalStorageService {
             deserializer: some GRPCCore.MessageDeserializer<Archebase_DataGateway_V1_PresignObjectResponse>,
             options: GRPCCore.CallOptions,
             onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_PresignObjectResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "ReadObject" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Reads a bounded object payload for backend-only callers.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Archebase_DataGateway_V1_ReadObjectRequest` message.
+        ///   - serializer: A serializer for `Archebase_DataGateway_V1_ReadObjectRequest` messages.
+        ///   - deserializer: A deserializer for `Archebase_DataGateway_V1_ReadObjectResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func readObject<Result>(
+            request: GRPCCore.ClientRequest<Archebase_DataGateway_V1_ReadObjectRequest>,
+            serializer: some GRPCCore.MessageSerializer<Archebase_DataGateway_V1_ReadObjectRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Archebase_DataGateway_V1_ReadObjectResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_ReadObjectResponse>) async throws -> Result
         ) async throws -> Result where Result: Sendable
     }
 
@@ -1932,6 +1993,40 @@ extension Archebase_DataGateway_V1_InternalStorageService {
                 onResponse: handleResponse
             )
         }
+
+        /// Call the "ReadObject" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Reads a bounded object payload for backend-only callers.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Archebase_DataGateway_V1_ReadObjectRequest` message.
+        ///   - serializer: A serializer for `Archebase_DataGateway_V1_ReadObjectRequest` messages.
+        ///   - deserializer: A deserializer for `Archebase_DataGateway_V1_ReadObjectResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        public func readObject<Result>(
+            request: GRPCCore.ClientRequest<Archebase_DataGateway_V1_ReadObjectRequest>,
+            serializer: some GRPCCore.MessageSerializer<Archebase_DataGateway_V1_ReadObjectRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Archebase_DataGateway_V1_ReadObjectResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_ReadObjectResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Archebase_DataGateway_V1_InternalStorageService.Method.ReadObject.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
     }
 }
 
@@ -1962,6 +2057,35 @@ extension Archebase_DataGateway_V1_InternalStorageService.ClientProtocol {
             request: request,
             serializer: GRPCProtobuf.ProtobufSerializer<Archebase_DataGateway_V1_PresignObjectRequest>(),
             deserializer: GRPCProtobuf.ProtobufDeserializer<Archebase_DataGateway_V1_PresignObjectResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "ReadObject" method.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > Reads a bounded object payload for backend-only callers.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Archebase_DataGateway_V1_ReadObjectRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func readObject<Result>(
+        request: GRPCCore.ClientRequest<Archebase_DataGateway_V1_ReadObjectRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_ReadObjectResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.readObject(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Archebase_DataGateway_V1_ReadObjectRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Archebase_DataGateway_V1_ReadObjectResponse>(),
             options: options,
             onResponse: handleResponse
         )
@@ -1998,6 +2122,39 @@ extension Archebase_DataGateway_V1_InternalStorageService.ClientProtocol {
             metadata: metadata
         )
         return try await self.presignObject(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "ReadObject" method.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > Reads a bounded object payload for backend-only callers.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func readObject<Result>(
+        _ message: Archebase_DataGateway_V1_ReadObjectRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Archebase_DataGateway_V1_ReadObjectResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Archebase_DataGateway_V1_ReadObjectRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.readObject(
             request: request,
             options: options,
             onResponse: handleResponse

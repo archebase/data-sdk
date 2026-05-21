@@ -310,6 +310,7 @@ package protocol GatewayControlPlaneClientProtocol: Sendable {
         rawTags: [String: String],
         completedPartCount: Int32,
         ossObjectEtag: String,
+        partSizeBytes: Int64,
         authorizationHeader: String
     ) async throws -> Archebase_DataGateway_V1_CompleteUploadResponse
 }
@@ -408,6 +409,7 @@ package final class GatewayControlPlaneClient<Client: Archebase_DataGateway_V1_D
         rawTags: [String: String],
         completedPartCount: Int32,
         ossObjectEtag: String,
+        partSizeBytes: Int64,
         authorizationHeader: String
     ) async throws -> Archebase_DataGateway_V1_CompleteUploadResponse {
         var request = Archebase_DataGateway_V1_CompleteUploadRequest()
@@ -416,6 +418,7 @@ package final class GatewayControlPlaneClient<Client: Archebase_DataGateway_V1_D
         request.rawTags = rawTags
         request.completedPartCount = completedPartCount
         request.ossObjectEtag = ossObjectEtag
+        request.partSizeBytes = partSizeBytes
 
         let options = self.optionsBuilder.make(authorizationHeader: authorizationHeader)
         let response: ClientResponse<Archebase_DataGateway_V1_CompleteUploadResponse> = try await self.client.completeUpload(
