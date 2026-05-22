@@ -597,7 +597,7 @@ struct LocalStackHarnessTests {
     #expect(!object.fileID.isEmpty)
     #expect(object.status == .verified)
     #expect(object.sizeBytes == Int64(payload.count))
-    #expect(object.etag == upload.ossObjectETag)
+    #expect(canonicalObjectETag(object.etag) == canonicalObjectETag(upload.ossObjectETag))
 }
 
 @Test(
@@ -892,6 +892,14 @@ private func writeRealPayload(_ payload: Data, under root: URL, name: String) th
         .appendingPathExtension("bin")
     try payload.write(to: fileURL)
     return fileURL
+}
+
+private func canonicalObjectETag(_ value: String) -> String {
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.count >= 2, trimmed.first == "\"", trimmed.last == "\"" {
+        return String(trimmed.dropFirst().dropLast())
+    }
+    return trimmed
 }
 
 private func realMultipartPayloadSizeBytes() -> Int {
