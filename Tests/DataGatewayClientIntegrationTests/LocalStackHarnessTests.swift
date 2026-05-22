@@ -12,6 +12,7 @@ private let runtimeIntegrationEnabled = ProcessInfo.processInfo.environment["DGW
 private let realRuntimeIntegrationEnabled = ProcessInfo.processInfo.environment["DGW_REAL_RUNTIME_INTEGRATION"] == "1"
 private let realDeviceInitIntegrationEnabled = ProcessInfo.processInfo.environment["DGW_REAL_DEVICE_INIT_INTEGRATION"] == "1"
 private let publicDNSIntegrationEnabled = ProcessInfo.processInfo.environment["DGW_PUBLIC_DNS_INTEGRATION"] == "1"
+private let realObjectListingIntegrationEnabled = realRuntimeIntegrationEnabled && hasRealUserAuthorizationHeader()
 
 @Suite(.serialized)
 struct LocalStackHarnessTests {
@@ -293,6 +294,15 @@ struct LocalStackHarnessTests {
     ) { grpcClient in
         Archebase_DataGateway_V1_DataGatewayService.Client(wrapping: grpcClient)
     }
+    let objectTransport = try ManagedControlPlaneServiceClient(
+        configuration: ControlPlaneTransportConfiguration(
+            endpoint: clientConfig.gatewayEndpoint,
+            security: .plaintext,
+            requestTimeout: clientConfig.requestTimeout
+        )
+    ) { grpcClient in
+        Archebase_DataGateway_V1_DataGatewayObjectService.Client(wrapping: grpcClient)
+    }
     let gatewayClient = AnyUploadCoordinatorGatewayClient(
         authProvider: authProvider,
         gatewayServiceClient: gatewayTransport.serviceClient,
@@ -317,7 +327,8 @@ struct LocalStackHarnessTests {
         ),
         runtimeResources: DataGatewayClientRuntimeResources(
             authTransport: authTransport,
-            gatewayTransport: gatewayTransport
+            gatewayTransport: gatewayTransport,
+            objectTransport: objectTransport
         )
     )
 
@@ -552,6 +563,41 @@ struct LocalStackHarnessTests {
 
     let pending = try await client.listPendingUploads()
     #expect(!pending.contains(where: { $0.logicalUploadID == result.logicalUploadID }))
+}
+
+@Test(
+    .enabled(if: realObjectListingIntegrationEnabled)
+) func realAliyunListObjectsFlow() async throws {
+    let environment = AliyunOSSTestEnvironment()
+    try environment.validate()
+    let clientConfig = try uniqueRealClientConfig(from: environment.makeRemoteClientConfig(), label: "list-objects")
+    defer { try? FileManager.default.removeItem(at: clientConfig.persistRootURL) }
+    let client = try DataGatewayClient(config: clientConfig)
+    let runID = "swift-list-\(UUID().uuidString)"
+    let payload = Data("aliyun-real-list-objects-payload-\(runID)".utf8)
+    let fileURL = try writeRealPayload(payload, under: clientConfig.persistRootURL, name: "aliyun-real-list-objects")
+
+    let upload = try await client.upload(
+        UploadRequest(
+            fileURL: fileURL,
+            clientHints: ["suite": "aliyun-real", "mode": "list-objects"],
+            rawTags: ["suite": "aliyun-real", "runtime": "list-objects", "object_list_run": runID],
+            displayName: "aliyun-real-list-objects"
+        )
+    )
+
+    let page = try await client.listObjects(
+        ListObjectsOptions(pageSize: 10, pageToken: nil, filter: "raw_tags.object_list_run=\(runID)"),
+        authorizationHeader: try realUserAuthorizationHeader()
+    )
+
+    let object = try #require(page.objects.first)
+    #expect(page.objects.count == 1)
+    #expect(page.nextPageToken.isEmpty)
+    #expect(!object.fileID.isEmpty)
+    #expect(object.status == .verified)
+    #expect(object.sizeBytes == Int64(payload.count))
+    #expect(canonicalObjectETag(object.etag) == canonicalObjectETag(upload.ossObjectETag))
 }
 
 @Test(
@@ -848,6 +894,14 @@ private func writeRealPayload(_ payload: Data, under root: URL, name: String) th
     return fileURL
 }
 
+private func canonicalObjectETag(_ value: String) -> String {
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.count >= 2, trimmed.first == "\"", trimmed.last == "\"" {
+        return String(trimmed.dropFirst().dropLast())
+    }
+    return trimmed
+}
+
 private func realMultipartPayloadSizeBytes() -> Int {
     if let value = ProcessInfo.processInfo.environment["DGW_REAL_MULTIPART_SIZE_BYTES"],
         let parsed = Int(value),
@@ -855,6 +909,30 @@ private func realMultipartPayloadSizeBytes() -> Int {
         return parsed
     }
     return 67_108_864 + 1024
+}
+
+private func hasRealUserAuthorizationHeader() -> Bool {
+    do {
+        _ = try realUserAuthorizationHeader()
+        return true
+    } catch {
+        return false
+    }
+}
+
+private func realUserAuthorizationHeader() throws -> String {
+    if let header = ProcessInfo.processInfo.environment["DGW_REAL_USER_AUTHORIZATION_HEADER"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+        !header.isEmpty {
+        return header
+    }
+    if let token = ProcessInfo.processInfo.environment["DGW_REAL_USER_ACCESS_TOKEN"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+        !token.isEmpty {
+        if token.lowercased().hasPrefix("bearer ") {
+            return token
+        }
+        return "Bearer \(token)"
+    }
+    throw AliyunOSSHarnessError.missingEnvironmentVariable("DGW_REAL_USER_AUTHORIZATION_HEADER")
 }
 
 private func makeRealGatewayHarness(clientConfig: DataGatewayClientConfig) throws -> RealGatewayHarness {

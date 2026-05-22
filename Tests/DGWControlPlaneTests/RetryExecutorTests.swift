@@ -100,6 +100,59 @@ import GRPCCore
     #expect(await gateway.getRecoveryInvocations() == ["Bearer token-1"])
 }
 
+@Test func retryingObjectClientRetriesTransientErrorsWithSameUserBearer() async throws {
+    let objectClient = MockObjectClient(results: [
+        .failure(RPCError(code: .unavailable, message: "gateway unavailable")),
+        .success(makeListObjectsResponse()),
+    ])
+    let sleeper = RecordingSleeper()
+    let client = RetryingObjectControlPlaneClient(
+        objectClient: objectClient,
+        retryExecutor: RetryExecutor(sleeper: sleeper),
+        retryPolicy: RetryPolicy(maxAttempts: 3, initialBackoff: .seconds(1), maxBackoff: .seconds(8))
+    )
+
+    let response = try await client.listObjects(
+        pageSize: 10,
+        pageToken: "page-1",
+        filter: "status:verified",
+        authorizationHeader: "Bearer user-token"
+    )
+
+    #expect(response.objects.map(\.fileID) == ["file-1"])
+    #expect(await objectClient.invocations() == [
+        "10:page-1:status:verified:Bearer user-token",
+        "10:page-1:status:verified:Bearer user-token",
+    ])
+    #expect(await sleeper.durations() == [.seconds(1)])
+}
+
+@Test func retryingObjectClientDoesNotRetryUnauthenticatedUserBearer() async {
+    let objectClient = MockObjectClient(results: [
+        .failure(RPCError(code: .unauthenticated, message: "invalid user token")),
+        .success(makeListObjectsResponse()),
+    ])
+    let sleeper = RecordingSleeper()
+    let client = RetryingObjectControlPlaneClient(
+        objectClient: objectClient,
+        retryExecutor: RetryExecutor(sleeper: sleeper),
+        retryPolicy: RetryPolicy(maxAttempts: 3, initialBackoff: .seconds(1), maxBackoff: .seconds(8))
+    )
+
+    let error = await #expect(throws: RPCError.self) {
+        try await client.listObjects(
+            pageSize: 10,
+            pageToken: "",
+            filter: "",
+            authorizationHeader: "Bearer stale-user-token"
+        )
+    }
+
+    #expect(error?.code == .unauthenticated)
+    #expect(await objectClient.invocations() == ["10:::Bearer stale-user-token"])
+    #expect(await sleeper.durations().isEmpty)
+}
+
 private actor RecordingSleeper: RetrySleeper {
     private var recordedDurations: [Duration] = []
 
@@ -265,10 +318,43 @@ private actor MockGatewayClient: GatewayControlPlaneClientProtocol {
     }
 }
 
+private actor MockObjectClient: ObjectControlPlaneClientProtocol {
+    private var results: [Result<Archebase_DataGateway_V1_ListObjectsResponse, RPCError>]
+    private var records: [String] = []
+
+    init(results: [Result<Archebase_DataGateway_V1_ListObjectsResponse, RPCError>]) {
+        self.results = results
+    }
+
+    func listObjects(
+        pageSize: Int32,
+        pageToken: String,
+        filter: String,
+        authorizationHeader: String
+    ) async throws -> Archebase_DataGateway_V1_ListObjectsResponse {
+        self.records.append("\(pageSize):\(pageToken):\(filter):\(authorizationHeader)")
+        return try self.results.removeFirst().get()
+    }
+
+    func invocations() -> [String] {
+        self.records
+    }
+}
+
 private func makeCreateResponse() -> Archebase_DataGateway_V1_CreateLogicalUploadResponse {
     var response = Archebase_DataGateway_V1_CreateLogicalUploadResponse()
     response.logicalUploadID = "logical-1"
     response.uploadID = "upload-1"
+    return response
+}
+
+private func makeListObjectsResponse() -> Archebase_DataGateway_V1_ListObjectsResponse {
+    var object = Archebase_DataGateway_V1_DataObject()
+    object.fileID = "file-1"
+    object.status = .verified
+
+    var response = Archebase_DataGateway_V1_ListObjectsResponse()
+    response.objects = [object]
     return response
 }
 

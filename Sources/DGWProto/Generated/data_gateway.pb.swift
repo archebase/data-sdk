@@ -117,6 +117,61 @@ public enum Archebase_DataGateway_V1_LogicalUploadStatus: SwiftProtobuf.Enum, Sw
 
 }
 
+/// User-visible lifecycle state for a logical data object.
+public enum Archebase_DataGateway_V1_DataObjectStatus: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case created // = 1
+  case uploaded // = 2
+  case verified // = 3
+  case bad // = 4
+  case aborted // = 5
+  case invalid // = 6
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .created
+    case 2: self = .uploaded
+    case 3: self = .verified
+    case 4: self = .bad
+    case 5: self = .aborted
+    case 6: self = .invalid
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .created: return 1
+    case .uploaded: return 2
+    case .verified: return 3
+    case .bad: return 4
+    case .aborted: return 5
+    case .invalid: return 6
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Archebase_DataGateway_V1_DataObjectStatus] = [
+    .unspecified,
+    .created,
+    .uploaded,
+    .verified,
+    .bad,
+    .aborted,
+    .invalid,
+  ]
+
+}
+
 /// User-visible aggregate copy job state.
 public enum Archebase_DataGateway_V1_CopyJobStatus: SwiftProtobuf.Enum, Swift.CaseIterable {
   public typealias RawValue = Int
@@ -608,6 +663,79 @@ public struct Archebase_DataGateway_V1_CompleteUploadResponse: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// Requests one page of verified logical objects visible to the authenticated user.
+public struct Archebase_DataGateway_V1_ListObjectsRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// Maximum number of objects to return.
+  public var pageSize: Int32 = 0
+
+  /// Opaque continuation token returned by a previous page. The token is only
+  /// valid with the same filter used to obtain it.
+  public var pageToken: String = String()
+
+  /// Server-side filter expression. Status filters are limited to verified objects.
+  public var filter: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// One logical object visible to the authenticated user.
+public struct Archebase_DataGateway_V1_DataObject: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// Customer-facing object identifier. Currently equal to file_id.
+  public var objectID: String = String()
+
+  /// Data Gateway file_id used by download and copy APIs.
+  public var fileID: String = String()
+
+  /// Current upload lifecycle state.
+  public var status: Archebase_DataGateway_V1_DataObjectStatus = .unspecified
+
+  /// Object size in bytes, if known.
+  public var sizeBytes: Int64 = 0
+
+  /// Unix seconds when the object record was created, or zero if unknown.
+  public var createdAtUnix: Int64 = 0
+
+  /// Unix seconds when upload completed, or zero if not uploaded.
+  public var uploadedAtUnix: Int64 = 0
+
+  /// Unix seconds when verification completed, or zero if not verified.
+  public var verifiedAtUnix: Int64 = 0
+
+  /// Object ETag recorded during upload, if known.
+  public var etag: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// Returns one page of logical objects and pagination metadata.
+public struct Archebase_DataGateway_V1_ListObjectsResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// Objects in page order.
+  public var objects: [Archebase_DataGateway_V1_DataObject] = []
+
+  /// Opaque continuation token for the next page, or empty when exhausted.
+  public var nextPageToken: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -1208,6 +1336,10 @@ extension Archebase_DataGateway_V1_UploadRecoveryAction: SwiftProtobuf._ProtoNam
 
 extension Archebase_DataGateway_V1_LogicalUploadStatus: SwiftProtobuf._ProtoNameProviding {
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0LOGICAL_UPLOAD_STATUS_UNSPECIFIED\0\u{1}LOGICAL_UPLOAD_STATUS_ACTIVE\0\u{1}LOGICAL_UPLOAD_STATUS_COMPLETING\0\u{1}LOGICAL_UPLOAD_STATUS_COMPLETED\0\u{1}LOGICAL_UPLOAD_STATUS_TERMINAL\0")
+}
+
+extension Archebase_DataGateway_V1_DataObjectStatus: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0DATA_OBJECT_STATUS_UNSPECIFIED\0\u{1}DATA_OBJECT_STATUS_CREATED\0\u{1}DATA_OBJECT_STATUS_UPLOADED\0\u{1}DATA_OBJECT_STATUS_VERIFIED\0\u{1}DATA_OBJECT_STATUS_BAD\0\u{1}DATA_OBJECT_STATUS_ABORTED\0\u{1}DATA_OBJECT_STATUS_INVALID\0")
 }
 
 extension Archebase_DataGateway_V1_CopyJobStatus: SwiftProtobuf._ProtoNameProviding {
@@ -1833,6 +1965,146 @@ extension Archebase_DataGateway_V1_CompleteUploadResponse: SwiftProtobuf.Message
   }
 
   public static func ==(lhs: Archebase_DataGateway_V1_CompleteUploadResponse, rhs: Archebase_DataGateway_V1_CompleteUploadResponse) -> Bool {
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Archebase_DataGateway_V1_ListObjectsRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ListObjectsRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}page_size\0\u{3}page_token\0\u{1}filter\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularInt32Field(value: &self.pageSize) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.pageToken) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.filter) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.pageSize != 0 {
+      try visitor.visitSingularInt32Field(value: self.pageSize, fieldNumber: 1)
+    }
+    if !self.pageToken.isEmpty {
+      try visitor.visitSingularStringField(value: self.pageToken, fieldNumber: 2)
+    }
+    if !self.filter.isEmpty {
+      try visitor.visitSingularStringField(value: self.filter, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Archebase_DataGateway_V1_ListObjectsRequest, rhs: Archebase_DataGateway_V1_ListObjectsRequest) -> Bool {
+    if lhs.pageSize != rhs.pageSize {return false}
+    if lhs.pageToken != rhs.pageToken {return false}
+    if lhs.filter != rhs.filter {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Archebase_DataGateway_V1_DataObject: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".DataObject"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}object_id\0\u{3}file_id\0\u{1}status\0\u{3}size_bytes\0\u{4}\u{2}created_at_unix\0\u{3}uploaded_at_unix\0\u{3}verified_at_unix\0\u{1}etag\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.objectID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.fileID) }()
+      case 3: try { try decoder.decodeSingularEnumField(value: &self.status) }()
+      case 4: try { try decoder.decodeSingularInt64Field(value: &self.sizeBytes) }()
+      case 6: try { try decoder.decodeSingularInt64Field(value: &self.createdAtUnix) }()
+      case 7: try { try decoder.decodeSingularInt64Field(value: &self.uploadedAtUnix) }()
+      case 8: try { try decoder.decodeSingularInt64Field(value: &self.verifiedAtUnix) }()
+      case 9: try { try decoder.decodeSingularStringField(value: &self.etag) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.objectID.isEmpty {
+      try visitor.visitSingularStringField(value: self.objectID, fieldNumber: 1)
+    }
+    if !self.fileID.isEmpty {
+      try visitor.visitSingularStringField(value: self.fileID, fieldNumber: 2)
+    }
+    if self.status != .unspecified {
+      try visitor.visitSingularEnumField(value: self.status, fieldNumber: 3)
+    }
+    if self.sizeBytes != 0 {
+      try visitor.visitSingularInt64Field(value: self.sizeBytes, fieldNumber: 4)
+    }
+    if self.createdAtUnix != 0 {
+      try visitor.visitSingularInt64Field(value: self.createdAtUnix, fieldNumber: 6)
+    }
+    if self.uploadedAtUnix != 0 {
+      try visitor.visitSingularInt64Field(value: self.uploadedAtUnix, fieldNumber: 7)
+    }
+    if self.verifiedAtUnix != 0 {
+      try visitor.visitSingularInt64Field(value: self.verifiedAtUnix, fieldNumber: 8)
+    }
+    if !self.etag.isEmpty {
+      try visitor.visitSingularStringField(value: self.etag, fieldNumber: 9)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Archebase_DataGateway_V1_DataObject, rhs: Archebase_DataGateway_V1_DataObject) -> Bool {
+    if lhs.objectID != rhs.objectID {return false}
+    if lhs.fileID != rhs.fileID {return false}
+    if lhs.status != rhs.status {return false}
+    if lhs.sizeBytes != rhs.sizeBytes {return false}
+    if lhs.createdAtUnix != rhs.createdAtUnix {return false}
+    if lhs.uploadedAtUnix != rhs.uploadedAtUnix {return false}
+    if lhs.verifiedAtUnix != rhs.verifiedAtUnix {return false}
+    if lhs.etag != rhs.etag {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Archebase_DataGateway_V1_ListObjectsResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ListObjectsResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}objects\0\u{3}next_page_token\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeRepeatedMessageField(value: &self.objects) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.nextPageToken) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.objects.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.objects, fieldNumber: 1)
+    }
+    if !self.nextPageToken.isEmpty {
+      try visitor.visitSingularStringField(value: self.nextPageToken, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Archebase_DataGateway_V1_ListObjectsResponse, rhs: Archebase_DataGateway_V1_ListObjectsResponse) -> Bool {
+    if lhs.objects != rhs.objects {return false}
+    if lhs.nextPageToken != rhs.nextPageToken {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

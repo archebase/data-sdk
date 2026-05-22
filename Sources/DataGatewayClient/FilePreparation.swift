@@ -758,6 +758,119 @@ public struct UploadResult: Sendable, Equatable {
     }
 }
 
+/// Options for listing verified logical objects visible to the user bearer token.
+public struct ListObjectsOptions: Sendable, Equatable {
+    public var pageSize: Int32
+    public var pageToken: String?
+    public var filter: String?
+
+    public init(
+        pageSize: Int32 = 0,
+        pageToken: String? = nil,
+        filter: String? = nil
+    ) {
+        self.pageSize = pageSize
+        self.pageToken = pageToken
+        self.filter = filter
+    }
+}
+
+/// User-visible lifecycle state for one logical data object.
+public enum DataObjectStatus: Sendable, Equatable {
+    case unspecified
+    case created
+    case uploaded
+    case verified
+    case bad
+    case aborted
+    case invalid
+    case unrecognized(Int)
+
+    package init(proto: Archebase_DataGateway_V1_DataObjectStatus) {
+        switch proto {
+        case .unspecified:
+            self = .unspecified
+        case .created:
+            self = .created
+        case .uploaded:
+            self = .uploaded
+        case .verified:
+            self = .verified
+        case .bad:
+            self = .bad
+        case .aborted:
+            self = .aborted
+        case .invalid:
+            self = .invalid
+        case .UNRECOGNIZED(let value):
+            self = .unrecognized(value)
+        }
+    }
+}
+
+/// One logical data object visible to the authenticated user.
+public struct DataObject: Sendable, Equatable {
+    public var objectID: String
+    public var fileID: String
+    public var status: DataObjectStatus
+    public var sizeBytes: Int64
+    public var createdAtUnix: Int64
+    public var uploadedAtUnix: Int64
+    public var verifiedAtUnix: Int64
+    public var etag: String
+
+    public init(
+        objectID: String,
+        fileID: String,
+        status: DataObjectStatus,
+        sizeBytes: Int64,
+        createdAtUnix: Int64,
+        uploadedAtUnix: Int64,
+        verifiedAtUnix: Int64,
+        etag: String
+    ) {
+        self.objectID = objectID
+        self.fileID = fileID
+        self.status = status
+        self.sizeBytes = sizeBytes
+        self.createdAtUnix = createdAtUnix
+        self.uploadedAtUnix = uploadedAtUnix
+        self.verifiedAtUnix = verifiedAtUnix
+        self.etag = etag
+    }
+
+    package init(proto: Archebase_DataGateway_V1_DataObject) {
+        self.init(
+            objectID: proto.objectID,
+            fileID: proto.fileID,
+            status: DataObjectStatus(proto: proto.status),
+            sizeBytes: proto.sizeBytes,
+            createdAtUnix: proto.createdAtUnix,
+            uploadedAtUnix: proto.uploadedAtUnix,
+            verifiedAtUnix: proto.verifiedAtUnix,
+            etag: proto.etag
+        )
+    }
+}
+
+/// One page of logical data objects and the opaque next-page token.
+public struct ListObjectsPage: Sendable, Equatable {
+    public var objects: [DataObject]
+    public var nextPageToken: String
+
+    public init(objects: [DataObject], nextPageToken: String) {
+        self.objects = objects
+        self.nextPageToken = nextPageToken
+    }
+
+    package init(proto: Archebase_DataGateway_V1_ListObjectsResponse) {
+        self.init(
+            objects: proto.objects.map(DataObject.init(proto:)),
+            nextPageToken: proto.nextPageToken
+        )
+    }
+}
+
 /// Upload status events emitted by the coordinator or stream API.
 public enum UploadEvent: Sendable, Equatable {
     case preparing
@@ -1595,6 +1708,7 @@ public actor UploadCoordinator {
 /// High-level client entry point for starting uploads.
 public actor DataGatewayClient {
     private let uploadCoordinator: UploadCoordinator
+    private let objectClient: (any ObjectControlPlaneClientProtocol)?
     private let runtimeResources: DataGatewayClientRuntimeResources?
     private let configTags: [String: String]
 
@@ -1635,17 +1749,26 @@ public actor DataGatewayClient {
             transport: authTransport.serviceClient
         )
 
-        let gatewayTransport = try ManagedControlPlaneServiceClient(configuration: ControlPlaneTransportConfiguration(
-            endpoint: config.gatewayEndpoint,
-            security: gatewaySecurity,
-            requestTimeout: config.requestTimeout
-        )) { grpcClient in
-            Archebase_DataGateway_V1_DataGatewayService.Client(wrapping: grpcClient)
-        }
+        let gatewayFactory = ControlPlaneClientFactory(
+            configuration: ControlPlaneTransportConfiguration(
+                endpoint: config.gatewayEndpoint,
+                security: gatewaySecurity,
+                requestTimeout: config.requestTimeout
+            )
+        )
+        let gatewayTransport = try gatewayFactory.makeGatewayClient()
+        let objectTransport = try gatewayFactory.makeObjectClient()
         let retryingGateway = AnyUploadCoordinatorGatewayClient(
             authProvider: authProvider,
             gatewayServiceClient: gatewayTransport.serviceClient,
             requestTimeout: config.requestTimeout,
+            retryPolicy: config.retryPolicy.controlPlane.controlPlaneValue
+        )
+        let objectClient = RetryingObjectControlPlaneClient(
+            objectClient: ObjectControlPlaneClient(
+                client: objectTransport.serviceClient,
+                requestTimeout: config.requestTimeout
+            ),
             retryPolicy: config.retryPolicy.controlPlane.controlPlaneValue
         )
 
@@ -1683,9 +1806,11 @@ public actor DataGatewayClient {
             executionPolicy: config.execution,
             dependencies: dependencies
         )
+        self.objectClient = objectClient
         self.runtimeResources = DataGatewayClientRuntimeResources(
             authTransport: authTransport,
-            gatewayTransport: gatewayTransport
+            gatewayTransport: gatewayTransport,
+            objectTransport: objectTransport
         )
         self.configTags = configTags
     }
@@ -1741,10 +1866,12 @@ public actor DataGatewayClient {
 
     package init(
         uploadCoordinator: UploadCoordinator,
+        objectClient: (any ObjectControlPlaneClientProtocol)? = nil,
         runtimeResources: DataGatewayClientRuntimeResources? = nil,
         configTags: [String: String] = [:]
     ) {
         self.uploadCoordinator = uploadCoordinator
+        self.objectClient = objectClient
         self.runtimeResources = runtimeResources
         self.configTags = configTags
     }
@@ -1785,6 +1912,34 @@ public actor DataGatewayClient {
         try await self.uploadCoordinator.listPendingUploads()
     }
 
+    /// Lists verified logical objects visible to the supplied user bearer token.
+    public func listObjects(
+        _ options: ListObjectsOptions = ListObjectsOptions(),
+        authorizationHeader: String
+    ) async throws -> ListObjectsPage {
+        guard let objectClient else {
+            throw DataGatewayClientError.invalidConfiguration("data gateway object client is unavailable")
+        }
+        let trimmedAuthorizationHeader = authorizationHeader.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedAuthorizationHeader.isEmpty else {
+            throw DataGatewayClientError.invalidConfiguration("authorization header is required")
+        }
+
+        do {
+            let response = try await objectClient.listObjects(
+                pageSize: options.pageSize,
+                pageToken: options.pageToken ?? "",
+                filter: options.filter ?? "",
+                authorizationHeader: trimmedAuthorizationHeader
+            )
+            return ListObjectsPage(proto: response)
+        } catch let error as DataGatewayClientError {
+            throw error
+        } catch {
+            throw ControlPlaneErrorMapper.map(error)
+        }
+    }
+
     /// Aborts one logical upload remotely and always removes its local snapshot on success or not-found.
     public func abortUpload(logicalUploadID: String) async throws {
         try await self.uploadCoordinator.abortUpload(logicalUploadID: logicalUploadID)
@@ -1813,13 +1968,16 @@ public actor DataGatewayClient {
 package final class DataGatewayClientRuntimeResources: @unchecked Sendable {
     private let authTransport: ManagedControlPlaneServiceClient<any CredentialExchangeTransport>
     private let gatewayTransport: ManagedControlPlaneServiceClient<Archebase_DataGateway_V1_DataGatewayService.Client<HTTP2ClientTransport.TransportServices>>
+    private let objectTransport: ManagedControlPlaneServiceClient<Archebase_DataGateway_V1_DataGatewayObjectService.Client<HTTP2ClientTransport.TransportServices>>
 
     package init(
         authTransport: ManagedControlPlaneServiceClient<any CredentialExchangeTransport>,
-        gatewayTransport: ManagedControlPlaneServiceClient<Archebase_DataGateway_V1_DataGatewayService.Client<HTTP2ClientTransport.TransportServices>>
+        gatewayTransport: ManagedControlPlaneServiceClient<Archebase_DataGateway_V1_DataGatewayService.Client<HTTP2ClientTransport.TransportServices>>,
+        objectTransport: ManagedControlPlaneServiceClient<Archebase_DataGateway_V1_DataGatewayObjectService.Client<HTTP2ClientTransport.TransportServices>>
     ) {
         self.authTransport = authTransport
         self.gatewayTransport = gatewayTransport
+        self.objectTransport = objectTransport
     }
 }
 

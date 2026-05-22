@@ -13,10 +13,11 @@ SDK 提供以下能力：
 3. 上传本地文件并返回 `UploadResult`。
 4. 订阅上传阶段和分片进度事件。
 5. 列出 App 本地仍可恢复的上传任务。
-6. 在 App 重启、网络恢复或上传中断后继续上传。
-7. 取消远端上传并清理本地状态。
-8. 仅删除本地快照，便于用户放弃恢复或处理异常状态。
-9. 接入日志与指标回调，方便接入宿主 App 的可观测性系统。
+6. 使用用户 access JWT 列出当前用户可见的远端 verified 逻辑对象。
+7. 在 App 重启、网络恢复或上传中断后继续上传。
+8. 取消远端上传并清理本地状态。
+9. 仅删除本地快照，便于用户放弃恢复或处理异常状态。
+10. 接入日志与指标回调，方便接入宿主 App 的可观测性系统。
 
 ## 2. 环境要求
 
@@ -559,11 +560,34 @@ SDK 会把源文件名写入保留 raw tag，value 是 `UploadRequest.fileURL.la
 
 App 侧持久化上传记录时，优先保存 `logicalUploadID`、`objectKey`、`fileSize` 和业务自己的文件记录 ID。不要把 `api_key`、临时访问凭证或完整错误详情写入可导出的用户日志。
 
-## 12. 恢复上传
+## 12. 列出远端对象
+
+`listObjects(_:authorizationHeader:)` 使用用户 access JWT 调用 Data Gateway object service，返回当前用户可见的 verified 逻辑对象。它不使用上传 `api_key`。`authorizationHeader` 不能为空；临时网络错误会复用控制面重试策略，但 `unauthenticated` 会直接返回给 App，由 App 负责刷新用户会话后重试。
+
+```swift
+let page = try await client.listObjects(
+    ListObjectsOptions(
+        pageSize: 50,
+        pageToken: nil,
+        filter: "status:verified"
+    ),
+    authorizationHeader: "Bearer \(userAccessToken)"
+)
+
+for object in page.objects {
+    print(object.objectID)
+    print(object.fileID)
+    print(object.status)
+}
+```
+
+`page.nextPageToken` 非空时，可带同一 filter 继续请求下一页。
+
+## 13. 恢复上传
 
 SDK 会在 `persistRootURL` 下保存上传快照。App 重启、网络恢复、进程被系统终止后，可以使用这些快照恢复上传。
 
-### 12.1 启动时列出待恢复任务
+### 13.1 启动时列出待恢复任务
 
 ```swift
 let pendingUploads = try await client.listPendingUploads()
@@ -578,7 +602,7 @@ for item in pendingUploads {
 
 `listPendingUploads()` 只返回仍在 active 状态的本地快照。使用推荐配置时，已完成上传不会出现在结果中。
 
-### 12.2 恢复指定任务
+### 13.2 恢复指定任务
 
 ```swift
 let result = try await client.resumeUpload(logicalUploadID: pending.logicalUploadID)
@@ -594,7 +618,7 @@ print(result.objectKey)
 3. 如果远端状态无法继续安全恢复，SDK 会在 `maxRestartCount` 限制内自动重建上传会话。
 4. 超过重建次数上限后，SDK 抛出 `DataGatewayClientError.uploadRestartExceeded`。
 
-### 12.3 PendingUploadInfo 字段
+### 13.3 PendingUploadInfo 字段
 
 | 字段 | 说明 |
 |---|---|
@@ -617,9 +641,9 @@ print(result.objectKey)
 | `businessCompleting` | 正在完成最终确认。 |
 | `terminalFailed` | 已进入失败终态。 |
 
-## 13. 取消和本地清理
+## 14. 取消和本地清理
 
-### 13.1 取消远端上传
+### 14.1 取消远端上传
 
 ```swift
 try await client.abortUpload(logicalUploadID: logicalUploadID)
@@ -627,7 +651,7 @@ try await client.abortUpload(logicalUploadID: logicalUploadID)
 
 `abortUpload(logicalUploadID:)` 会请求远端取消该上传，并在取消成功或远端已经找不到该上传时删除本地快照。用户在 UI 中选择“取消上传”或“放弃任务”时，优先使用该方法。
 
-### 13.2 仅删除本地快照
+### 14.2 仅删除本地快照
 
 ```swift
 try await client.deleteLocalSnapshot(logicalUploadID: logicalUploadID)
@@ -641,7 +665,7 @@ try await client.deleteLocalSnapshot(logicalUploadID: logicalUploadID)
 
 如果你的目标是取消上传并释放远端资源，请使用 `abortUpload(logicalUploadID:)`。
 
-## 14. 错误处理
+## 15. 错误处理
 
 SDK 的公开错误模型是 `DataGatewayClientError`。
 
@@ -728,7 +752,7 @@ do {
 | `uploadRestartExceeded` | 提示重新上传，必要时保留日志联系支持。 |
 | `persistenceFailed` | 检查磁盘空间、文件保护状态和 App 容器权限。 |
 
-## 15. 可观测性
+## 16. 可观测性
 
 通过 `DataGatewayClientObservability` 将 SDK 日志和指标接入宿主 App：
 
@@ -772,9 +796,9 @@ SDK 会对包含 `credential`、`token`、`accessKey`、`secret` 等关键词的
 | `upload_part` | `upload_id`、`part_number` | 分片上传事件。 |
 | `credentials_refresh` | `upload_id` | 上传凭证刷新事件。 |
 
-## 16. iOS App 生命周期建议
+## 17. iOS App 生命周期建议
 
-### 16.1 App 启动
+### 17.1 App 启动
 
 App 启动后建议执行：
 
@@ -805,7 +829,7 @@ func makeClientOrRequireInitialization() async throws -> DataGatewayClient? {
 }
 ```
 
-### 16.2 前后台切换
+### 17.2 前后台切换
 
 当前 SDK 使用 Swift Concurrency 执行上传，不是 iOS `URLSession` background transfer。App 进入后台后，系统可能暂停或终止进程。
 
@@ -816,15 +840,15 @@ func makeClientOrRequireInitialization() async throws -> DataGatewayClient? {
 3. App 回到前台或重启后，调用 `listPendingUploads()` 并恢复任务。
 4. UI 上应允许用户重试、恢复、取消或重新选择文件。
 
-### 16.3 文件选择与安全作用域
+### 17.3 文件选择与安全作用域
 
 如果文件来自 `UIDocumentPickerViewController` 或其他安全作用域 URL，SDK 会尽量访问安全作用域资源并把文件复制到 SDK staging 目录。推荐保持 `copyExternalFileIntoManagedStaging = true`，这样用户移动或撤销原始文件访问权限后，已进入 staging 的上传仍更容易恢复。
 
-### 16.4 文件大小与内存
+### 17.4 文件大小与内存
 
 当前版本会在本地读取文件并按分片上传。请根据目标设备内存和网络条件控制单个文件大小。对于非常大的文件、后台长传或高并发上传需求，建议在上线前与 Archebase 支持团队确认版本能力和压测结果。
 
-## 17. 完整示例
+## 18. 完整示例
 
 下面示例展示一个 App 侧上传服务的典型封装方式：
 
@@ -917,11 +941,11 @@ actor GatewayUploadService {
 
 在 SwiftUI 或 UIKit 中更新 UI 时，请在 `MainActor` 上处理上传状态。不要在 `onLog`、`onMetric` 或上传事件循环中执行耗时同步操作。
 
-## 18. Public API 速查
+## 19. Public API 速查
 
 以下类型分布在 `DataGatewayClient`、`DGWControlPlane` 和 `DGWStore` 模块中。App 按第 4 节同时添加这三个产品并导入对应模块后，可以直接使用这些公开类型。
 
-### 18.1 DataGatewayClient
+### 19.1 DataGatewayClient
 
 ```swift
 public actor DataGatewayClient {
@@ -944,13 +968,18 @@ public actor DataGatewayClient {
 
     public func listPendingUploads() async throws -> [PendingUploadInfo]
 
+    public func listObjects(
+        _ options: ListObjectsOptions = ListObjectsOptions(),
+        authorizationHeader: String
+    ) async throws -> ListObjectsPage
+
     public func abortUpload(logicalUploadID: String) async throws
 
     public func deleteLocalSnapshot(logicalUploadID: String) async throws
 }
 ```
 
-### 18.2 Device Initialization
+### 19.2 Device Initialization
 
 ```swift
 public struct DeviceInitClientConfig: Sendable {
@@ -977,7 +1006,44 @@ public struct ArchebaseConfig: Codable, Sendable, Equatable {
 }
 ```
 
-### 18.3 Upload Types
+### 19.3 Object Types
+
+```swift
+public struct ListObjectsOptions: Sendable, Equatable {
+    public var pageSize: Int32
+    public var pageToken: String?
+    public var filter: String?
+}
+
+public struct ListObjectsPage: Sendable, Equatable {
+    public var objects: [DataObject]
+    public var nextPageToken: String
+}
+
+public struct DataObject: Sendable, Equatable {
+    public var objectID: String
+    public var fileID: String
+    public var status: DataObjectStatus
+    public var sizeBytes: Int64
+    public var createdAtUnix: Int64
+    public var uploadedAtUnix: Int64
+    public var verifiedAtUnix: Int64
+    public var etag: String
+}
+
+public enum DataObjectStatus: Sendable, Equatable {
+    case unspecified
+    case created
+    case uploaded
+    case verified
+    case bad
+    case aborted
+    case invalid
+    case unrecognized(Int)
+}
+```
+
+### 19.4 Upload Types
 
 ```swift
 public struct UploadRequest: Sendable {
@@ -1011,7 +1077,7 @@ public enum UploadEvent: Sendable, Equatable {
 }
 ```
 
-### 18.4 Pending Upload Types
+### 19.5 Pending Upload Types
 
 ```swift
 public struct PendingUploadInfo: Sendable, Equatable {
@@ -1034,7 +1100,7 @@ public enum PersistedUploadPhase: String, Codable, Sendable, Equatable {
 }
 ```
 
-### 18.5 Configuration Types
+### 19.6 Configuration Types
 
 ```swift
 public struct DataGatewayClientConfig: Sendable {
@@ -1077,7 +1143,7 @@ public struct LocalPersistencePolicy: Sendable, Equatable {
 }
 ```
 
-### 18.6 Observability Types
+### 19.7 Observability Types
 
 ```swift
 public struct DataGatewayClientObservability: Sendable {
@@ -1099,7 +1165,7 @@ public struct DataGatewayClientLogEvent: Sendable, Equatable {
 }
 ```
 
-### 18.7 Error Type
+### 19.8 Error Type
 
 ```swift
 public enum DataGatewayClientError: Error, Sendable, Equatable {
@@ -1123,7 +1189,7 @@ public enum DataGatewayClientError: Error, Sendable, Equatable {
 }
 ```
 
-## 19. 上线前检查清单
+## 20. 上线前检查清单
 
 1. 确认 `archebase-endpoints.json` 已初始化到 App 私有目录，包含 `auth`、`gateway` 和 `deviceInit` 三组 endpoint，App 网络环境可以访问这些端点。
 2. `archebase-endpoints.json` 和 `archebase-config.json` 写入 App 私有目录，不进入日志、备份导出或共享容器。
@@ -1136,7 +1202,7 @@ public enum DataGatewayClientError: Error, Sendable, Equatable {
 9. `clientHints` 和 `rawTags` 不包含密码、token、个人隐私或其他敏感信息。
 10. 已接入 `DataGatewayClientObservability` 或等价日志，且日志经过脱敏和采样策略控制。
 
-## 20. 快速问题定位
+## 21. 快速问题定位
 
 | 现象 | 优先检查 |
 |---|---|
