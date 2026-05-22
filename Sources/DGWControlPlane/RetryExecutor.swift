@@ -205,6 +205,7 @@ package struct RetryExecutor: Sendable {
 
     package func execute<T: Sendable>(
         policy: RetryPolicy = .controlPlane,
+        retryAuthorizationFailures: Bool = true,
         refreshAuthorization: @Sendable () async throws -> Void = {},
         operation: @Sendable () async throws -> T
     ) async throws -> T {
@@ -233,7 +234,7 @@ package struct RetryExecutor: Sendable {
                     }
                     try await self.sleeper.sleep(for: delay)
                     attempt += 1
-                case .refreshAuthorization where !didRefreshAuthorization && attempt < policy.maxAttempts:
+                case .refreshAuthorization where retryAuthorizationFailures && !didRefreshAuthorization && attempt < policy.maxAttempts:
                     if let onEvent {
                         await onEvent(
                             ControlPlaneRetryEvent(
@@ -353,6 +354,43 @@ package final class AuthenticatedGatewayControlPlaneClient<
 
     private func refreshAuthorization() async throws {
         await self.authProvider.invalidateAuthorization()
+    }
+}
+
+package final class RetryingObjectControlPlaneClient<
+    ObjectClient: ObjectControlPlaneClientProtocol
+>: ObjectControlPlaneClientProtocol, @unchecked Sendable {
+    private let objectClient: ObjectClient
+    private let retryExecutor: RetryExecutor
+    private let retryPolicy: RetryPolicy
+
+    package init(
+        objectClient: ObjectClient,
+        retryExecutor: RetryExecutor = RetryExecutor(),
+        retryPolicy: RetryPolicy = .controlPlane
+    ) {
+        self.objectClient = objectClient
+        self.retryExecutor = retryExecutor
+        self.retryPolicy = retryPolicy
+    }
+
+    package func listObjects(
+        pageSize: Int32,
+        pageToken: String,
+        filter: String,
+        authorizationHeader: String
+    ) async throws -> Archebase_DataGateway_V1_ListObjectsResponse {
+        try await self.retryExecutor.execute(
+            policy: self.retryPolicy,
+            retryAuthorizationFailures: false
+        ) {
+            try await self.objectClient.listObjects(
+                pageSize: pageSize,
+                pageToken: pageToken,
+                filter: filter,
+                authorizationHeader: authorizationHeader
+            )
+        }
     }
 }
 

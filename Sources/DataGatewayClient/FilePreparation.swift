@@ -1749,29 +1749,27 @@ public actor DataGatewayClient {
             transport: authTransport.serviceClient
         )
 
-        let gatewayTransport = try ManagedControlPlaneServiceClient(configuration: ControlPlaneTransportConfiguration(
-            endpoint: config.gatewayEndpoint,
-            security: gatewaySecurity,
-            requestTimeout: config.requestTimeout
-        )) { grpcClient in
-            Archebase_DataGateway_V1_DataGatewayService.Client(wrapping: grpcClient)
-        }
-        let objectTransport = try ManagedControlPlaneServiceClient(configuration: ControlPlaneTransportConfiguration(
-            endpoint: config.gatewayEndpoint,
-            security: gatewaySecurity,
-            requestTimeout: config.requestTimeout
-        )) { grpcClient in
-            Archebase_DataGateway_V1_DataGatewayObjectService.Client(wrapping: grpcClient)
-        }
+        let gatewayFactory = ControlPlaneClientFactory(
+            configuration: ControlPlaneTransportConfiguration(
+                endpoint: config.gatewayEndpoint,
+                security: gatewaySecurity,
+                requestTimeout: config.requestTimeout
+            )
+        )
+        let gatewayTransport = try gatewayFactory.makeGatewayClient()
+        let objectTransport = try gatewayFactory.makeObjectClient()
         let retryingGateway = AnyUploadCoordinatorGatewayClient(
             authProvider: authProvider,
             gatewayServiceClient: gatewayTransport.serviceClient,
             requestTimeout: config.requestTimeout,
             retryPolicy: config.retryPolicy.controlPlane.controlPlaneValue
         )
-        let objectClient = ObjectControlPlaneClient(
-            client: objectTransport.serviceClient,
-            requestTimeout: config.requestTimeout
+        let objectClient = RetryingObjectControlPlaneClient(
+            objectClient: ObjectControlPlaneClient(
+                client: objectTransport.serviceClient,
+                requestTimeout: config.requestTimeout
+            ),
+            retryPolicy: config.retryPolicy.controlPlane.controlPlaneValue
         )
 
         let stateStore = UploadStateStore(persistRoot: config.persistRootURL)
@@ -1922,13 +1920,17 @@ public actor DataGatewayClient {
         guard let objectClient else {
             throw DataGatewayClientError.invalidConfiguration("data gateway object client is unavailable")
         }
+        let trimmedAuthorizationHeader = authorizationHeader.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedAuthorizationHeader.isEmpty else {
+            throw DataGatewayClientError.invalidConfiguration("authorization header is required")
+        }
 
         do {
             let response = try await objectClient.listObjects(
                 pageSize: options.pageSize,
                 pageToken: options.pageToken ?? "",
                 filter: options.filter ?? "",
-                authorizationHeader: authorizationHeader
+                authorizationHeader: trimmedAuthorizationHeader
             )
             return ListObjectsPage(proto: response)
         } catch let error as DataGatewayClientError {

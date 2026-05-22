@@ -197,17 +197,15 @@ package struct ControlPlaneClientFactory: Sendable {
         }
     }
 
-    package func makeGatewayClient() throws -> ManagedControlPlaneServiceClient<any Archebase_DataGateway_V1_DataGatewayService.ClientProtocol> {
+    package func makeGatewayClient() throws -> ManagedControlPlaneServiceClient<Archebase_DataGateway_V1_DataGatewayService.Client<HTTP2ClientTransport.TransportServices>> {
         try ManagedControlPlaneServiceClient(configuration: self.configuration) { grpcClient in
             Archebase_DataGateway_V1_DataGatewayService.Client(wrapping: grpcClient)
-                as any Archebase_DataGateway_V1_DataGatewayService.ClientProtocol
         }
     }
 
-    package func makeObjectClient() throws -> ManagedControlPlaneServiceClient<any Archebase_DataGateway_V1_DataGatewayObjectService.ClientProtocol> {
+    package func makeObjectClient() throws -> ManagedControlPlaneServiceClient<Archebase_DataGateway_V1_DataGatewayObjectService.Client<HTTP2ClientTransport.TransportServices>> {
         try ManagedControlPlaneServiceClient(configuration: self.configuration) { grpcClient in
             Archebase_DataGateway_V1_DataGatewayObjectService.Client(wrapping: grpcClient)
-                as any Archebase_DataGateway_V1_DataGatewayObjectService.ClientProtocol
         }
     }
 

@@ -182,6 +182,28 @@ import Testing
     #expect(await objectClient.lastCall == "50:page-1:status:verified:Bearer user-token")
 }
 
+@Test func listObjectsRejectsBlankAuthorizationHeaderLocally() async throws {
+    let root = try temporaryRoot()
+    let objectClient = RecordingObjectClient()
+    let coordinator = UploadCoordinator(
+        executionPolicy: makeTestExecutionPolicy(),
+        dependencies: UploadCoordinatorDependencies(
+            gatewayClient: RecordingGatewayClient(),
+            stateStore: UploadStateStore(persistRoot: root),
+            fileCoordinator: FileStagingCoordinator(stagingRoot: root.appendingPathComponent("staging", isDirectory: true)),
+            ossClientFactory: { _ in FakeMultipartSession() }
+        )
+    )
+    let client = DataGatewayClient(uploadCoordinator: coordinator, objectClient: objectClient)
+
+    let error = await #expect(throws: DataGatewayClientError.self) {
+        _ = try await client.listObjects(authorizationHeader: " \n\t ")
+    }
+
+    #expect(error == .invalidConfiguration("authorization header is required"))
+    #expect(await objectClient.lastCall == nil)
+}
+
 private func temporaryRoot() throws -> URL {
     let root = FileManager.default.temporaryDirectory
         .appendingPathComponent("archebase-client-config-tests", isDirectory: true)
