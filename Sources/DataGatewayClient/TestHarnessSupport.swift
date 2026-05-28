@@ -168,6 +168,7 @@ package struct LocalStackTestEnvironment: Sendable {
 /// Errors raised while validating the Aliyun OSS test harness environment.
 package enum AliyunOSSHarnessError: Error, Sendable, Equatable {
     case missingEnvironmentVariable(String)
+    case invalidEnvironmentVariable(String)
 }
 
 /// Expected object metadata for remote upload assertions.
@@ -227,11 +228,12 @@ package struct AliyunOSSTestEnvironment: Sendable {
                 endpointsJSON: try self.publicEndpointsJSON(),
                 endpointsURL: endpointsURL
             )
-            return try DataGatewayClientConfig.recommended(
+            let config = try DataGatewayClientConfig.recommended(
                 credentialBase64: credentialBase64,
                 persistRootURL: persistRoot,
                 endpointsURL: endpointsURL
             )
+            return try self.applyRemoteRequestTimeoutOverride(to: config)
         }
 
         let authEndpoint = try self.requiredURL(for: "DGW_REAL_AUTH_ENDPOINT")
@@ -251,13 +253,33 @@ package struct AliyunOSSTestEnvironment: Sendable {
             tls = authEndpoint.scheme?.lowercased() == "https" ? .tls : .plaintext
         }
 
-        return DataGatewayClientConfig.testRecommended(
+        let config = DataGatewayClientConfig.testRecommended(
             authEndpoint: authEndpoint,
             gatewayEndpoint: gatewayEndpoint,
             credentialBase64: credentialBase64,
             persistRootURL: persistRoot,
             tls: tls
         )
+        return try self.applyRemoteRequestTimeoutOverride(to: config)
+    }
+
+    private func applyRemoteRequestTimeoutOverride(to config: DataGatewayClientConfig) throws -> DataGatewayClientConfig {
+        guard let seconds = try self.remoteRequestTimeoutSeconds() else {
+            return config
+        }
+        var copy = config
+        copy.requestTimeout = .seconds(seconds)
+        return copy
+    }
+
+    private func remoteRequestTimeoutSeconds() throws -> Int64? {
+        guard let value = self.environment["DGW_REAL_REQUEST_TIMEOUT_SECONDS"]?.trimmedNonEmpty else {
+            return nil
+        }
+        guard let seconds = Int64(value), seconds > 0 else {
+            throw AliyunOSSHarnessError.invalidEnvironmentVariable("DGW_REAL_REQUEST_TIMEOUT_SECONDS")
+        }
+        return seconds
     }
 
     private func requiredValue(for key: String) throws -> String {
@@ -372,6 +394,16 @@ package struct LocalStackMockMultipartSession: UploadCoordinatorMultipartSession
         return UploadedPartDescriptor(
             partNumber: partNumber,
             etag: "\"runtime-part-\(partNumber)\"",
+            size: Int64(body.count),
+            lastModified: nil,
+            hashCRC64: nil
+        )
+    }
+
+    package func putObject(body: Data) async throws -> UploadedPartDescriptor {
+        UploadedPartDescriptor(
+            partNumber: 1,
+            etag: self.completedETag,
             size: Int64(body.count),
             lastModified: nil,
             hashCRC64: nil

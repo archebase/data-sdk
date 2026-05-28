@@ -327,6 +327,10 @@ private actor FakeMultipartSession: UploadCoordinatorMultipartSessionProtocol {
         UploadedPartDescriptor(partNumber: partNumber, etag: "\"etag-\(partNumber)\"", size: Int64(body.count), lastModified: nil, hashCRC64: nil)
     }
 
+    func putObject(body: Data) async throws -> UploadedPartDescriptor {
+        UploadedPartDescriptor(partNumber: 1, etag: "\"etag-object\"", size: Int64(body.count), lastModified: nil, hashCRC64: nil)
+    }
+
     func listParts(multipartUploadID: String) async throws -> [UploadedPartDescriptor] { [] }
 
     func headObjectETag() async throws -> String { "\"etag-object\"" }

@@ -129,6 +129,7 @@ package enum OssOperationError: Error, Sendable, Equatable {
     case invalidResponse(String)
     case clientFailure(code: String, message: String)
     case serverFailure(statusCode: Int, code: String, message: String, requestID: String, ec: String?)
+    case transportFailure(code: Int, message: String)
     case unexpected(String)
 }
 
@@ -212,6 +213,14 @@ package struct OssUploadPartOutput: Sendable, Equatable {
     }
 }
 
+package struct OssPutObjectOutput: Sendable, Equatable {
+    package let etag: String?
+
+    package init(etag: String?) {
+        self.etag = etag
+    }
+}
+
 package struct OssCompleteMultipartUploadOutput: Sendable, Equatable {
     package let etag: String?
 
@@ -275,6 +284,10 @@ package protocol AlibabaOSSSDKClientProtocol: Sendable {
         _ request: UploadPartRequest
     ) async throws -> OssUploadPartOutput
 
+    func putObject(
+        _ request: PutObjectRequest
+    ) async throws -> OssPutObjectOutput
+
     func completeMultipartUpload(
         _ request: CompleteMultipartUploadRequest
     ) async throws -> OssCompleteMultipartUploadOutput
@@ -311,6 +324,13 @@ package struct AlibabaOSSSDKClientAdapter: AlibabaOSSSDKClientProtocol {
     ) async throws -> OssUploadPartOutput {
         let result = try await self.client.uploadPart(request)
         return OssUploadPartOutput(etag: result.etag)
+    }
+
+    package func putObject(
+        _ request: PutObjectRequest
+    ) async throws -> OssPutObjectOutput {
+        let result = try await self.client.putObject(request)
+        return OssPutObjectOutput(etag: result.etag)
     }
 
     package func completeMultipartUpload(
@@ -517,6 +537,8 @@ package enum OSSDataPlaneErrorMapper {
             return DataGatewayClientError.ossFailed(httpStatus: nil, ossCode: code, message: message)
         case .serverFailure(let statusCode, let code, let message, _, _):
             return DataGatewayClientError.ossFailed(httpStatus: statusCode, ossCode: code, message: message)
+        case .transportFailure(let code, let message):
+            return DataGatewayClientError.ossFailed(httpStatus: nil, ossCode: code.description, message: message)
         }
     }
 
@@ -545,6 +567,13 @@ package enum OSSDataPlaneErrorMapper {
                 return DataPlaneRetryClassification(action: .retry, httpStatus: statusCode, ossCode: code, message: message)
             }
             return DataPlaneRetryClassification(action: .fail, httpStatus: statusCode, ossCode: code, message: message)
+        case .transportFailure(let code, let message):
+            return DataPlaneRetryClassification(
+                action: Self.isRetriableTransportCode(code) ? .retry : .fail,
+                httpStatus: nil,
+                ossCode: code.description,
+                message: message
+            )
         }
     }
 
@@ -581,7 +610,12 @@ package enum OSSDataPlaneErrorMapper {
     }
 
     private static func isRetriableURLFailure(_ error: URLError) -> Bool {
-        switch error.code {
+        self.isRetriableTransportCode(error.code.rawValue)
+    }
+
+    private static func isRetriableTransportCode(_ code: Int) -> Bool {
+        let urlErrorCode = URLError.Code(rawValue: code)
+        switch urlErrorCode {
         case .timedOut,
             .networkConnectionLost,
             .notConnectedToInternet,
@@ -693,6 +727,11 @@ package protocol OssMultipartClientProtocol: Sendable {
         body: Data
     ) async throws -> UploadedPartDescriptor
 
+    func putObject(
+        objectKey: String,
+        body: Data
+    ) async throws -> UploadedPartDescriptor
+
     func completeMultipartUpload(
         objectKey: String,
         multipartUploadID: String,
@@ -761,6 +800,32 @@ package struct OssMultipartClient: OssMultipartClientProtocol {
             }
             return UploadedPartDescriptor(
                 partNumber: partNumber,
+                etag: etag,
+                size: Int64(body.count),
+                lastModified: nil,
+                hashCRC64: nil
+            )
+        } catch {
+            throw Self.mapError(error)
+        }
+    }
+
+    package func putObject(
+        objectKey: String,
+        body: Data
+    ) async throws -> UploadedPartDescriptor {
+        do {
+            let request = PutObjectRequest(
+                bucket: self.configuration.bucket,
+                key: objectKey,
+                body: .data(body)
+            )
+            let result = try await self.sdkClient.putObject(request)
+            guard let etag = result.etag?.nilIfBlank else {
+                throw OssOperationError.invalidResponse("PutObject response missing ETag")
+            }
+            return UploadedPartDescriptor(
+                partNumber: 1,
                 etag: etag,
                 size: Int64(body.count),
                 lastModified: nil,
@@ -886,6 +951,9 @@ package struct OssMultipartClient: OssMultipartClientProtocol {
                 ec: serverError.ec.nilIfBlank
             )
         }
+        if let urlError = error as? URLError {
+            return .transportFailure(code: urlError.code.rawValue, message: urlError.localizedDescription)
+        }
         return .unexpected(String(describing: error))
     }
 }
@@ -1009,6 +1077,12 @@ package actor OssUploadSession {
         }
     }
 
+    package func putObject(body: Data) async throws -> UploadedPartDescriptor {
+        try await self.executeDataPlaneOperation {
+            try await self.performPutObject(body: body)
+        }
+    }
+
     package func completeMultipartUpload(
         multipartUploadID: String,
         parts: [UploadedPartDescriptor]
@@ -1082,6 +1156,13 @@ package actor OssUploadSession {
             objectKey: self.context.objectKey,
             multipartUploadID: multipartUploadID,
             partNumber: partNumber,
+            body: body
+        )
+    }
+
+    private func performPutObject(body: Data) async throws -> UploadedPartDescriptor {
+        try await self.client.putObject(
+            objectKey: self.context.objectKey,
             body: body
         )
     }

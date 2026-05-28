@@ -898,6 +898,11 @@ package enum ReconcileRemotePartsDecision: Sendable, Equatable {
     case restartUpload
 }
 
+private struct DataPlaneUploadCompletion: Sendable, Equatable {
+    let completedPartCount: Int32
+    let ossObjectETag: String
+}
+
 package protocol UploadCoordinatorClock: Sendable {
     func now() async -> Date
 }
@@ -948,6 +953,7 @@ package protocol UploadCoordinatorMultipartSessionProtocol: Sendable {
         partNumber: Int,
         body: Data
     ) async throws -> UploadedPartDescriptor
+    func putObject(body: Data) async throws -> UploadedPartDescriptor
     func listParts(multipartUploadID: String) async throws -> [UploadedPartDescriptor]
     func headObjectETag() async throws -> String
     func completeMultipartUpload(
@@ -1036,86 +1042,29 @@ public actor UploadCoordinator {
             credentials: createResponse.credentials
         )
         let ossSession = try self.dependencies.ossClientFactory(uploadContext)
-        await self.emitLog(operation: "upload", uploadID: createResponse.uploadID, logicalUploadID: createResponse.logicalUploadID, phase: "multipart_initiated", message: "created logical upload")
+        await self.emitLog(operation: "upload", uploadID: createResponse.uploadID, logicalUploadID: createResponse.logicalUploadID, phase: "session_created", message: "created logical upload")
 
-        await onEvent?(.initiatingMultipart(uploadID: createResponse.uploadID))
-        let multipartUploadID = try await ossSession.initiateMultipartUpload()
-
-        var multipartState = persistedState
-        multipartState.multipartUploadID = multipartUploadID
-        multipartState.phase = .multipartInitiated
-        multipartState.updatedAt = await self.dependencies.clock.now()
-        try await self.dependencies.stateStore.saveActive(multipartState)
-
-        let partSize = Int(uploadContext.partSizeBytes)
-        let parts = try self.loadFileParts(from: preparedFile.managedFileURL, partSize: partSize)
-
-        var uploadedParts: [PersistedUploadedPart] = []
-        var uploadedDescriptors: [UploadedPartDescriptor] = []
-        var offset: UInt64 = 0
-
-        for (index, part) in parts.enumerated() {
-            try await self.refreshUploadSessionIfNeeded(session: ossSession, state: &multipartState, onEvent: onEvent)
-            let partNumber = index + 1
-            await onEvent?(.uploadingPart(partNumber: partNumber, sentBytes: UInt64(part.count), totalBytes: preparedFile.fileSize))
-            await self.emitMetric("upload_part", dimensions: ["upload_id": createResponse.uploadID, "part_number": String(partNumber)])
-
-            let descriptor = try await ossSession.uploadPart(
-                multipartUploadID: multipartUploadID,
-                partNumber: partNumber,
-                body: part
+        var uploadState = persistedState
+        let uploadCompletion: DataPlaneUploadCompletion
+        if Self.shouldUseSingleObjectUpload(fileSize: uploadState.fileSize, partSizeBytes: uploadState.partSizeBytes) {
+            uploadCompletion = try await self.uploadSingleObject(
+                state: &uploadState,
+                session: ossSession,
+                onEvent: onEvent
             )
-            uploadedDescriptors.append(descriptor)
-            uploadedParts.append(
-                PersistedUploadedPart(
-                    partNumber: partNumber,
-                    etag: descriptor.etag,
-                    offsetStart: offset,
-                    partSize: UInt64(part.count),
-                    md5Hex: Self.md5Hex(part)
-                )
+        } else {
+            uploadCompletion = try await self.uploadMultipart(
+                state: &uploadState,
+                session: ossSession,
+                existingMultipartUploadID: nil,
+                onEvent: onEvent
             )
-            offset += UInt64(part.count)
-
-            multipartState.phase = .uploading
-            multipartState.uploadedParts = uploadedParts
-            multipartState.updatedAt = await self.dependencies.clock.now()
-            try await self.dependencies.stateStore.saveActive(multipartState)
         }
 
-        try await self.refreshUploadSessionIfNeeded(session: ossSession, state: &multipartState, onEvent: onEvent)
-        await onEvent?(.completingMultipart(uploadID: createResponse.uploadID))
-        let ossObjectETag = try await ossSession.completeMultipartUpload(
-            multipartUploadID: multipartUploadID,
-            parts: uploadedDescriptors
-        )
-
-        multipartState.phase = .multipartCompleted
-        multipartState.updatedAt = await self.dependencies.clock.now()
-        try await self.dependencies.stateStore.saveActive(multipartState)
-
-        await onEvent?(.completingBusinessUpload(uploadID: createResponse.uploadID))
-        _ = try await self.dependencies.gatewayClient.completeUpload(
-            uploadID: createResponse.uploadID,
-            fileSize: Int64(preparedFile.fileSize),
-            rawTags: request.rawTags,
-            completedPartCount: Int32(uploadedDescriptors.count),
-            ossObjectEtag: ossObjectETag,
-            partSizeBytes: createResponse.credentials.partSizeBytes
-        )
-
-        let completedAt = await self.dependencies.clock.now()
-        multipartState.phase = .businessCompleting
-        multipartState.updatedAt = completedAt
-        try await self.dependencies.stateStore.moveToCompleted(multipartState)
-
-        let result = UploadResult(
-            logicalUploadID: createResponse.logicalUploadID,
-            uploadID: createResponse.uploadID,
-            bucket: createResponse.credentials.bucket,
-            objectKey: createResponse.credentials.objectKey,
-            fileSize: preparedFile.fileSize,
-            ossObjectETag: ossObjectETag
+        let result = try await self.completeBusinessUpload(
+            state: &uploadState,
+            uploadCompletion: uploadCompletion,
+            onEvent: onEvent
         )
         await onEvent?(.completed(result))
         await self.emitLog(operation: "upload", uploadID: result.uploadID, logicalUploadID: result.logicalUploadID, phase: "completed", message: "upload completed")
@@ -1245,6 +1194,31 @@ public actor UploadCoordinator {
         resumedState.updatedAt = await self.dependencies.clock.now()
         try await self.dependencies.stateStore.saveActive(resumedState)
 
+        if Self.isPersistedSingleObjectCompleted(resumedState) {
+            return try await self.completePersistedSingleObjectOrRestart(
+                state: resumedState,
+                session: ossSession,
+                onEvent: onEvent
+            )
+        }
+
+        if Self.shouldUseSingleObjectUpload(fileSize: resumedState.fileSize, partSizeBytes: resumedState.partSizeBytes),
+            resumedState.multipartUploadID?.nilIfBlank == nil,
+            resumedState.uploadedParts.isEmpty {
+            let uploadCompletion = try await self.uploadSingleObject(
+                state: &resumedState,
+                session: ossSession,
+                onEvent: onEvent
+            )
+            let result = try await self.completeBusinessUpload(
+                state: &resumedState,
+                uploadCompletion: uploadCompletion,
+                onEvent: onEvent
+            )
+            await onEvent?(.completed(result))
+            return result
+        }
+
         if self.executionPolicy.reconcileRemotePartsOnResume,
             let existingMultipartUploadID = resumedState.multipartUploadID?.nilIfBlank,
             resumedState.phase == .multipartInitiated || resumedState.phase == .uploading {
@@ -1263,93 +1237,16 @@ public actor UploadCoordinator {
             }
         }
 
-        let multipartUploadID: String
-        if let existingMultipartUploadID = resumedState.multipartUploadID?.nilIfBlank {
-            multipartUploadID = existingMultipartUploadID
-        } else {
-            await onEvent?(.initiatingMultipart(uploadID: resumedState.uploadID))
-            multipartUploadID = try await ossSession.initiateMultipartUpload()
-            resumedState.multipartUploadID = multipartUploadID
-            resumedState.phase = .multipartInitiated
-            resumedState.updatedAt = await self.dependencies.clock.now()
-            try await self.dependencies.stateStore.saveActive(resumedState)
-        }
-
-        let partSize = Int(uploadContext.partSizeBytes)
-        let parts = try self.loadFileParts(from: resumedState.managedFileURL, partSize: partSize)
-        var persistedPartsByNumber = Dictionary(uniqueKeysWithValues: resumedState.uploadedParts.map { ($0.partNumber, $0) })
-        var uploadedDescriptors = resumedState.uploadedParts
-            .sorted(by: { $0.partNumber < $1.partNumber })
-            .map {
-                UploadedPartDescriptor(
-                    partNumber: $0.partNumber,
-                    etag: $0.etag,
-                    size: Int64($0.partSize),
-                    lastModified: nil,
-                    hashCRC64: nil
-                )
-            }
-
-        for (index, part) in parts.enumerated() {
-            let partNumber = index + 1
-            if persistedPartsByNumber[partNumber] != nil {
-                continue
-            }
-
-            try await self.refreshUploadSessionIfNeeded(session: ossSession, state: &resumedState, onEvent: onEvent)
-            await onEvent?(.uploadingPart(partNumber: partNumber, sentBytes: UInt64(part.count), totalBytes: resumedState.fileSize))
-            let descriptor = try await ossSession.uploadPart(
-                multipartUploadID: multipartUploadID,
-                partNumber: partNumber,
-                body: part
-            )
-            uploadedDescriptors.append(descriptor)
-            persistedPartsByNumber[partNumber] = PersistedUploadedPart(
-                partNumber: partNumber,
-                etag: descriptor.etag,
-                offsetStart: UInt64(index * partSize),
-                partSize: UInt64(part.count),
-                md5Hex: Self.md5Hex(part)
-            )
-            resumedState.uploadedParts = persistedPartsByNumber.values.sorted(by: { $0.partNumber < $1.partNumber })
-            resumedState.phase = .uploading
-            resumedState.updatedAt = await self.dependencies.clock.now()
-            try await self.dependencies.stateStore.saveActive(resumedState)
-        }
-
-        uploadedDescriptors.sort(by: { $0.partNumber < $1.partNumber })
-        try await self.refreshUploadSessionIfNeeded(session: ossSession, state: &resumedState, onEvent: onEvent)
-        await onEvent?(.completingMultipart(uploadID: resumedState.uploadID))
-        let ossObjectETag = try await ossSession.completeMultipartUpload(
-            multipartUploadID: multipartUploadID,
-            parts: uploadedDescriptors
+        let uploadCompletion = try await self.uploadMultipart(
+            state: &resumedState,
+            session: ossSession,
+            existingMultipartUploadID: resumedState.multipartUploadID?.nilIfBlank,
+            onEvent: onEvent
         )
-
-        resumedState.phase = .multipartCompleted
-        resumedState.updatedAt = await self.dependencies.clock.now()
-        try await self.dependencies.stateStore.saveActive(resumedState)
-
-        await onEvent?(.completingBusinessUpload(uploadID: resumedState.uploadID))
-        _ = try await self.dependencies.gatewayClient.completeUpload(
-            uploadID: resumedState.uploadID,
-            fileSize: Int64(resumedState.fileSize),
-            rawTags: resumedState.rawTags,
-            completedPartCount: Int32(uploadedDescriptors.count),
-            ossObjectEtag: ossObjectETag,
-            partSizeBytes: Int64(resumedState.partSizeBytes)
-        )
-
-        resumedState.phase = .businessCompleting
-        resumedState.updatedAt = await self.dependencies.clock.now()
-        try await self.dependencies.stateStore.moveToCompleted(resumedState)
-
-        let result = UploadResult(
-            logicalUploadID: resumedState.logicalUploadID,
-            uploadID: resumedState.uploadID,
-            bucket: resumedState.bucket,
-            objectKey: resumedState.objectKey,
-            fileSize: resumedState.fileSize,
-            ossObjectETag: ossObjectETag
+        let result = try await self.completeBusinessUpload(
+            state: &resumedState,
+            uploadCompletion: uploadCompletion,
+            onEvent: onEvent
         )
         await onEvent?(.completed(result))
         return result
@@ -1376,6 +1273,24 @@ public actor UploadCoordinator {
         )
         let ossSession = try self.dependencies.ossClientFactory(uploadContext)
 
+        var resumedState = state
+        resumedState.uploadID = refreshedCredentials.uploadID.nilIfBlank ?? uploadID
+        resumedState.bucket = refreshedCredentials.credentials.bucket
+        resumedState.endpoint = refreshedCredentials.credentials.endpoint
+        resumedState.objectKey = refreshedCredentials.credentials.objectKey
+        resumedState.partSizeBytes = UInt64(refreshedCredentials.credentials.partSizeBytes)
+        resumedState.lastKnownSTSExpireAt = Self.makeDate(fromUnix: refreshedCredentials.credentials.stsExpireAtUnix)
+        resumedState.updatedAt = await self.dependencies.clock.now()
+        try await self.dependencies.stateStore.saveActive(resumedState)
+
+        if Self.isPersistedSingleObjectCompleted(resumedState) {
+            return try await self.completePersistedSingleObjectOrRestart(
+                state: resumedState,
+                session: ossSession,
+                onEvent: onEvent
+            )
+        }
+
         guard let expectedObjectETag = expectedObjectETag?.trimmingCharacters(in: .whitespacesAndNewlines), !expectedObjectETag.isEmpty else {
             throw DataGatewayClientError.uploadRestartExceeded
         }
@@ -1391,19 +1306,9 @@ public actor UploadCoordinator {
             throw error
         }
 
-        if remoteETag != expectedObjectETag {
+        if !Self.etagsMatch(remoteETag, expectedObjectETag) {
             throw DataGatewayClientError.uploadRestartExceeded
         }
-
-        var resumedState = state
-        resumedState.uploadID = refreshedCredentials.uploadID.nilIfBlank ?? uploadID
-        resumedState.bucket = refreshedCredentials.credentials.bucket
-        resumedState.endpoint = refreshedCredentials.credentials.endpoint
-        resumedState.objectKey = refreshedCredentials.credentials.objectKey
-        resumedState.partSizeBytes = UInt64(refreshedCredentials.credentials.partSizeBytes)
-        resumedState.lastKnownSTSExpireAt = Self.makeDate(fromUnix: refreshedCredentials.credentials.stsExpireAtUnix)
-        resumedState.updatedAt = await self.dependencies.clock.now()
-        try await self.dependencies.stateStore.saveActive(resumedState)
 
         await onEvent?(.completingBusinessUpload(uploadID: resumedState.uploadID))
         _ = try await self.dependencies.gatewayClient.completeUpload(
@@ -1482,81 +1387,200 @@ public actor UploadCoordinator {
         )
         let ossSession = try self.dependencies.ossClientFactory(uploadContext)
 
-        await onEvent?(.initiatingMultipart(uploadID: createResponse.uploadID))
-        let multipartUploadID = try await ossSession.initiateMultipartUpload()
-        restartedState.multipartUploadID = multipartUploadID
-        restartedState.phase = .multipartInitiated
-        restartedState.updatedAt = await self.dependencies.clock.now()
-        try await self.dependencies.stateStore.saveActive(restartedState)
+        let uploadCompletion: DataPlaneUploadCompletion
+        if Self.shouldUseSingleObjectUpload(fileSize: restartedState.fileSize, partSizeBytes: restartedState.partSizeBytes) {
+            uploadCompletion = try await self.uploadSingleObject(
+                state: &restartedState,
+                session: ossSession,
+                onEvent: onEvent
+            )
+        } else {
+            uploadCompletion = try await self.uploadMultipart(
+                state: &restartedState,
+                session: ossSession,
+                existingMultipartUploadID: nil,
+                onEvent: onEvent
+            )
+        }
 
-        let partSize = Int(uploadContext.partSizeBytes)
-        let parts = try self.loadFileParts(from: restartedState.managedFileURL, partSize: partSize)
-        var uploadedParts: [PersistedUploadedPart] = []
-        var uploadedDescriptors: [UploadedPartDescriptor] = []
-        var offset: UInt64 = 0
+        let result = try await self.completeBusinessUpload(
+            state: &restartedState,
+            uploadCompletion: uploadCompletion,
+            onEvent: onEvent
+        )
+        await onEvent?(.completed(result))
+        return result
+    }
+
+    private func uploadSingleObject(
+        state: inout PersistedUploadState,
+        session: any UploadCoordinatorMultipartSessionProtocol,
+        onEvent: (@Sendable (UploadEvent) async -> Void)?
+    ) async throws -> DataPlaneUploadCompletion {
+        try await self.refreshUploadSessionIfNeeded(session: session, state: &state, onEvent: onEvent)
+
+        let body = try self.dependencies.fileCoordinator.readAll(from: state.managedFileURL)
+        await onEvent?(.uploadingPart(partNumber: 1, sentBytes: UInt64(body.count), totalBytes: state.fileSize))
+        await self.emitMetric("upload_part", dimensions: ["upload_id": state.uploadID, "part_number": "1"])
+
+        let descriptor = try await session.putObject(body: body)
+        state.multipartUploadID = nil
+        state.uploadedParts = [
+            PersistedUploadedPart(
+                partNumber: 1,
+                etag: descriptor.etag,
+                offsetStart: 0,
+                partSize: UInt64(body.count),
+                md5Hex: Self.md5Hex(body)
+            ),
+        ]
+        state.phase = .multipartCompleted
+        state.updatedAt = await self.dependencies.clock.now()
+        try await self.dependencies.stateStore.saveActive(state)
+
+        return DataPlaneUploadCompletion(completedPartCount: 1, ossObjectETag: descriptor.etag)
+    }
+
+    private func uploadMultipart(
+        state: inout PersistedUploadState,
+        session: any UploadCoordinatorMultipartSessionProtocol,
+        existingMultipartUploadID: String?,
+        onEvent: (@Sendable (UploadEvent) async -> Void)?
+    ) async throws -> DataPlaneUploadCompletion {
+        let multipartUploadID: String
+        if let existingMultipartUploadID {
+            multipartUploadID = existingMultipartUploadID
+        } else {
+            await onEvent?(.initiatingMultipart(uploadID: state.uploadID))
+            multipartUploadID = try await session.initiateMultipartUpload()
+            state.multipartUploadID = multipartUploadID
+            state.phase = .multipartInitiated
+            state.updatedAt = await self.dependencies.clock.now()
+            try await self.dependencies.stateStore.saveActive(state)
+        }
+
+        let partSize = Int(state.partSizeBytes)
+        let parts = try self.loadFileParts(from: state.managedFileURL, partSize: partSize)
+        var persistedPartsByNumber = Dictionary(uniqueKeysWithValues: state.uploadedParts.map { ($0.partNumber, $0) })
+        var uploadedDescriptors = state.uploadedParts
+            .sorted(by: { $0.partNumber < $1.partNumber })
+            .map {
+                UploadedPartDescriptor(
+                    partNumber: $0.partNumber,
+                    etag: $0.etag,
+                    size: Int64($0.partSize),
+                    lastModified: nil,
+                    hashCRC64: nil
+                )
+            }
 
         for (index, part) in parts.enumerated() {
-            try await self.refreshUploadSessionIfNeeded(session: ossSession, state: &restartedState, onEvent: onEvent)
             let partNumber = index + 1
-            await onEvent?(.uploadingPart(partNumber: partNumber, sentBytes: UInt64(part.count), totalBytes: restartedState.fileSize))
-            let descriptor = try await ossSession.uploadPart(
+            if persistedPartsByNumber[partNumber] != nil {
+                continue
+            }
+
+            try await self.refreshUploadSessionIfNeeded(session: session, state: &state, onEvent: onEvent)
+            await onEvent?(.uploadingPart(partNumber: partNumber, sentBytes: UInt64(part.count), totalBytes: state.fileSize))
+            await self.emitMetric("upload_part", dimensions: ["upload_id": state.uploadID, "part_number": String(partNumber)])
+
+            let descriptor = try await session.uploadPart(
                 multipartUploadID: multipartUploadID,
                 partNumber: partNumber,
                 body: part
             )
             uploadedDescriptors.append(descriptor)
-            uploadedParts.append(
-                PersistedUploadedPart(
-                    partNumber: partNumber,
-                    etag: descriptor.etag,
-                    offsetStart: offset,
-                    partSize: UInt64(part.count),
-                    md5Hex: Self.md5Hex(part)
-                )
+            persistedPartsByNumber[partNumber] = PersistedUploadedPart(
+                partNumber: partNumber,
+                etag: descriptor.etag,
+                offsetStart: UInt64(index * partSize),
+                partSize: UInt64(part.count),
+                md5Hex: Self.md5Hex(part)
             )
-            offset += UInt64(part.count)
-
-            restartedState.phase = .uploading
-            restartedState.uploadedParts = uploadedParts
-            restartedState.updatedAt = await self.dependencies.clock.now()
-            try await self.dependencies.stateStore.saveActive(restartedState)
+            state.uploadedParts = persistedPartsByNumber.values.sorted(by: { $0.partNumber < $1.partNumber })
+            state.phase = .uploading
+            state.updatedAt = await self.dependencies.clock.now()
+            try await self.dependencies.stateStore.saveActive(state)
         }
 
-        try await self.refreshUploadSessionIfNeeded(session: ossSession, state: &restartedState, onEvent: onEvent)
-        await onEvent?(.completingMultipart(uploadID: restartedState.uploadID))
-        let ossObjectETag = try await ossSession.completeMultipartUpload(
+        uploadedDescriptors.sort(by: { $0.partNumber < $1.partNumber })
+        try await self.refreshUploadSessionIfNeeded(session: session, state: &state, onEvent: onEvent)
+        await onEvent?(.completingMultipart(uploadID: state.uploadID))
+        let ossObjectETag = try await session.completeMultipartUpload(
             multipartUploadID: multipartUploadID,
             parts: uploadedDescriptors
         )
 
-        restartedState.phase = .multipartCompleted
-        restartedState.updatedAt = await self.dependencies.clock.now()
-        try await self.dependencies.stateStore.saveActive(restartedState)
+        state.phase = .multipartCompleted
+        state.updatedAt = await self.dependencies.clock.now()
+        try await self.dependencies.stateStore.saveActive(state)
 
-        await onEvent?(.completingBusinessUpload(uploadID: restartedState.uploadID))
-        _ = try await self.dependencies.gatewayClient.completeUpload(
-            uploadID: restartedState.uploadID,
-            fileSize: Int64(restartedState.fileSize),
-            rawTags: restartedState.rawTags,
+        return DataPlaneUploadCompletion(
             completedPartCount: Int32(uploadedDescriptors.count),
-            ossObjectEtag: ossObjectETag,
-            partSizeBytes: Int64(restartedState.partSizeBytes)
-        )
-
-        restartedState.phase = .businessCompleting
-        restartedState.updatedAt = await self.dependencies.clock.now()
-        try await self.dependencies.stateStore.moveToCompleted(restartedState)
-
-        let result = UploadResult(
-            logicalUploadID: restartedState.logicalUploadID,
-            uploadID: restartedState.uploadID,
-            bucket: restartedState.bucket,
-            objectKey: restartedState.objectKey,
-            fileSize: restartedState.fileSize,
             ossObjectETag: ossObjectETag
+        )
+    }
+
+    private func completePersistedSingleObjectOrRestart(
+        state: PersistedUploadState,
+        session: any UploadCoordinatorMultipartSessionProtocol,
+        onEvent: (@Sendable (UploadEvent) async -> Void)?
+    ) async throws -> UploadResult {
+        guard let persistedETag = state.uploadedParts.first?.etag.nilIfBlank else {
+            return try await self.restartUpload(state: state, onEvent: onEvent)
+        }
+
+        let remoteETag: String
+        do {
+            remoteETag = try await session.headObjectETag()
+        } catch let error as DataGatewayClientError {
+            if Self.isObjectMissing(error) {
+                return try await self.restartUpload(state: state, onEvent: onEvent)
+            }
+            throw error
+        }
+
+        guard Self.etagsMatch(remoteETag, persistedETag) else {
+            return try await self.restartUpload(state: state, onEvent: onEvent)
+        }
+
+        var resumedState = state
+        let result = try await self.completeBusinessUpload(
+            state: &resumedState,
+            uploadCompletion: DataPlaneUploadCompletion(completedPartCount: 1, ossObjectETag: remoteETag),
+            onEvent: onEvent
         )
         await onEvent?(.completed(result))
         return result
+    }
+
+    private func completeBusinessUpload(
+        state: inout PersistedUploadState,
+        uploadCompletion: DataPlaneUploadCompletion,
+        onEvent: (@Sendable (UploadEvent) async -> Void)?
+    ) async throws -> UploadResult {
+        await onEvent?(.completingBusinessUpload(uploadID: state.uploadID))
+        _ = try await self.dependencies.gatewayClient.completeUpload(
+            uploadID: state.uploadID,
+            fileSize: Int64(state.fileSize),
+            rawTags: state.rawTags,
+            completedPartCount: uploadCompletion.completedPartCount,
+            ossObjectEtag: uploadCompletion.ossObjectETag,
+            partSizeBytes: Int64(state.partSizeBytes)
+        )
+
+        state.phase = .businessCompleting
+        state.updatedAt = await self.dependencies.clock.now()
+        try await self.dependencies.stateStore.moveToCompleted(state)
+
+        return UploadResult(
+            logicalUploadID: state.logicalUploadID,
+            uploadID: state.uploadID,
+            bucket: state.bucket,
+            objectKey: state.objectKey,
+            fileSize: state.fileSize,
+            ossObjectETag: uploadCompletion.ossObjectETag
+        )
     }
 
     private func refreshUploadSessionIfNeeded(
@@ -1632,6 +1656,36 @@ public actor UploadCoordinator {
             return nil
         }
         return Date(timeIntervalSince1970: TimeInterval(unix))
+    }
+
+    private static func shouldUseSingleObjectUpload(fileSize: UInt64, partSizeBytes: UInt64) -> Bool {
+        fileSize <= partSizeBytes
+    }
+
+    private static func isPersistedSingleObjectCompleted(_ state: PersistedUploadState) -> Bool {
+        state.phase == .multipartCompleted
+            && state.multipartUploadID?.nilIfBlank == nil
+            && state.uploadedParts.count == 1
+    }
+
+    private static func isObjectMissing(_ error: DataGatewayClientError) -> Bool {
+        guard case .ossFailed(let httpStatus, let ossCode, _) = error else {
+            return false
+        }
+        return httpStatus == 404 || ossCode == "NotFound" || ossCode == "NoSuchKey"
+    }
+
+    private static func etagsMatch(_ lhs: String, _ rhs: String) -> Bool {
+        self.canonicalETag(lhs) == self.canonicalETag(rhs)
+    }
+
+    private static func canonicalETag(_ value: String) -> String {
+        var trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("\""), trimmed.hasSuffix("\""), trimmed.count >= 2 {
+            trimmed.removeFirst()
+            trimmed.removeLast()
+        }
+        return trimmed.lowercased()
     }
 
     package static func decideResumeAction(
