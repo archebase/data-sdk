@@ -311,6 +311,9 @@ import Testing
         CompleteInvocation(uploadID: "upload-idempotent", fileSize: 12, rawTags: completedRawTags, completedPartCount: 1, ossObjectEtag: "\"etag-object\"", partSizeBytes: 12),
         CompleteInvocation(uploadID: "upload-idempotent", fileSize: 12, rawTags: completedRawTags, completedPartCount: 1, ossObjectEtag: "\"etag-object\"", partSizeBytes: 12),
     ])
+    #expect(await ossSession.initiateCalls() == 0)
+    #expect(await ossSession.putObjectCalls() == [payload.count])
+    #expect(await ossSession.uploadCalls().isEmpty)
 }
 
 @Test func contractOssObjectETagMismatchPropagatesIntegrityFailure() async {
@@ -432,9 +435,7 @@ import Testing
         .preparing,
         .authenticating,
         .creatingLogicalUpload,
-        .initiatingMultipart(uploadID: "upload-1"),
         .uploadingPart(partNumber: 1, sentBytes: UInt64(payload.count), totalBytes: UInt64(payload.count)),
-        .completingMultipart(uploadID: "upload-1"),
         .completingBusinessUpload(uploadID: "upload-1"),
         .completed(result),
     ])
@@ -450,7 +451,10 @@ import Testing
             partSizeBytes: 64 * 1024 * 1024
         ),
     ])
-    #expect(await ossSession.uploadCalls() == [UploadCall(multipartUploadID: "multipart-1", partNumber: 1, size: payload.count)])
+    #expect(await ossSession.initiateCalls() == 0)
+    #expect(await ossSession.uploadCalls().isEmpty)
+    #expect(await ossSession.putObjectCalls() == [payload.count])
+    #expect(await ossSession.completeCalls().isEmpty)
 
     let pending = try await stateStore.listPendingUploads()
     #expect(pending.isEmpty)
@@ -517,6 +521,9 @@ import Testing
     #expect(result.objectKey == "objects/small.bin")
     #expect(result.fileSize == UInt64(payload.count))
     #expect(result.ossObjectETag == "\"etag-small-object\"")
+    #expect(await ossSession.initiateCalls() == 0)
+    #expect(await ossSession.putObjectCalls() == [payload.count])
+    #expect(await ossSession.uploadCalls().isEmpty)
 }
 
 @Test func dataGatewayClientUploadHandlesMultipartFiles() async throws {
@@ -568,11 +575,14 @@ import Testing
     )
 
     #expect(result.uploadID == "upload-multipart")
+    #expect(await ossSession.initiateCalls() == 1)
+    #expect(await ossSession.putObjectCalls().isEmpty)
     #expect(await ossSession.uploadCalls() == [
         UploadCall(multipartUploadID: "multipart-24", partNumber: 1, size: 8),
         UploadCall(multipartUploadID: "multipart-24", partNumber: 2, size: 8),
         UploadCall(multipartUploadID: "multipart-24", partNumber: 3, size: 8),
     ])
+    #expect(await ossSession.completeCalls() == [[1, 2, 3]])
     #expect(await gatewayClient.completeInvocations() == [
         CompleteInvocation(
             uploadID: "upload-multipart",
@@ -640,9 +650,7 @@ import Testing
         .preparing,
         .authenticating,
         .creatingLogicalUpload,
-        .initiatingMultipart(uploadID: "upload-events"),
         .uploadingPart(partNumber: 1, sentBytes: UInt64(payload.count), totalBytes: UInt64(payload.count)),
-        .completingMultipart(uploadID: "upload-events"),
         .completingBusinessUpload(uploadID: "upload-events"),
         .completed(UploadResult(
             logicalUploadID: "logical-1",
@@ -683,7 +691,7 @@ import Testing
             UploadedPartDescriptor(partNumber: 1, etag: "\"etag-events-error-part\"", size: Int64(payload.count), lastModified: nil, hashCRC64: nil),
         ],
         completedETag: "\"etag-events-error-object\"",
-        failOnComplete: DataGatewayClientError.ossFailed(httpStatus: 500, ossCode: "InternalError", message: "complete failed")
+        failOnPutObject: DataGatewayClientError.ossFailed(httpStatus: 500, ossCode: "InternalError", message: "put failed")
     )
     let client = DataGatewayClient(
         uploadCoordinator: UploadCoordinator(
@@ -707,7 +715,7 @@ import Testing
         }
         Issue.record("expected uploadEvents to throw")
     } catch let error as DataGatewayClientError {
-        #expect(error == .ossFailed(httpStatus: 500, ossCode: "InternalError", message: "complete failed"))
+        #expect(error == .ossFailed(httpStatus: 500, ossCode: "InternalError", message: "put failed"))
     } catch {
         Issue.record("unexpected error: \(error)")
     }
@@ -716,9 +724,7 @@ import Testing
         .preparing,
         .authenticating,
         .creatingLogicalUpload,
-        .initiatingMultipart(uploadID: "upload-events-error"),
         .uploadingPart(partNumber: 1, sentBytes: UInt64(payload.count), totalBytes: UInt64(payload.count)),
-        .completingMultipart(uploadID: "upload-events-error"),
     ])
 }
 
@@ -1677,6 +1683,220 @@ import Testing
     #expect(error == .uploadRestartExceeded)
 }
 
+@Test func putObjectResumeCompletedStateUsesHeadObjectAndCompletesBusinessUpload() async throws {
+    let managedURL = URL(fileURLWithPath: "/staging/put-resume-complete.bin")
+    let payload = Data("resume".utf8)
+    let stateStore = UploadStateStore(
+        persistRoot: FileManager.default.temporaryDirectory.appendingPathComponent("data-gateway-client-put-complete-\(UUID().uuidString)"),
+        fileManager: .default,
+        clock: FixedUploadCoordinatorStoreClock(now: Date(timeIntervalSince1970: 2_700))
+    )
+    try await stateStore.saveActive(
+        makePersistedResumeState(
+            managedFileURL: managedURL,
+            multipartUploadID: nil,
+            phase: .multipartCompleted,
+            fileSize: UInt64(payload.count),
+            firstChunkMD5Hex: "69F2AFC2390CEC954F7C208B07212D39",
+            uploadedParts: [
+                PersistedUploadedPart(partNumber: 1, etag: "etag-put", offsetStart: 0, partSize: UInt64(payload.count), md5Hex: "69F2AFC2390CEC954F7C208B07212D39"),
+            ]
+        )
+    )
+
+    let gatewayClient = MockUploadCoordinatorGatewayClient(
+        createResponse: makeCreateLogicalUploadResponse(),
+        recoveryResponse: makeContinueRecoveryResponse(currentUploadID: "upload-put-complete", completedPartCount: 0),
+        reissueResponse: makeReissueResponse(
+            uploadID: "upload-put-complete",
+            credentials: makeCoordinatorUploadCredentials(expireAtUnix: 9_000, tokenSuffix: "put-complete", objectKey: "objects/put-complete.bin", partSizeBytes: 8)
+        ),
+        completeResponse: Archebase_DataGateway_V1_CompleteUploadResponse()
+    )
+    let ossSession = MockOssUploadSession(
+        multipartUploadID: "multipart-unused",
+        uploadedParts: [],
+        completedETag: "\"etag-unused\"",
+        headObjectETag: "\"etag-put\""
+    )
+    let client = DataGatewayClient(
+        uploadCoordinator: UploadCoordinator(
+            executionPolicy: makeExecutionPolicy(),
+            dependencies: UploadCoordinatorDependencies(
+                gatewayClient: gatewayClient,
+                stateStore: stateStore,
+                fileCoordinator: FileStagingCoordinator(
+                    stagingRoot: URL(fileURLWithPath: "/staging"),
+                    fileSystem: MemoryFileSystem(files: [
+                        managedURL: .file(size: UInt64(payload.count), modifiedAt: Date(timeIntervalSince1970: 250), data: payload),
+                    ]),
+                    securityScopedAccessor: PassthroughSecurityScopedAccessor()
+                ),
+                ossClientFactory: { _ in ossSession },
+                clock: FixedUploadCoordinatorClock(now: Date(timeIntervalSince1970: 2_700))
+            )
+        )
+    )
+
+    let result = try await client.resumeUpload(logicalUploadID: "logical-resume")
+
+    #expect(result.uploadID == "upload-put-complete")
+    #expect(result.ossObjectETag == "\"etag-put\"")
+    #expect(await ossSession.initiateCalls() == 0)
+    #expect(await ossSession.putObjectCalls().isEmpty)
+    #expect(await ossSession.uploadCalls().isEmpty)
+    #expect(await gatewayClient.completeInvocations() == [
+        CompleteInvocation(
+            uploadID: "upload-put-complete",
+            fileSize: Int64(payload.count),
+            rawTags: ["scene": "robot"],
+            completedPartCount: 1,
+            ossObjectEtag: "\"etag-put\"",
+            partSizeBytes: 8
+        ),
+    ])
+}
+
+@Test func putObjectResumeMissingObjectRestartsWithPutObject() async throws {
+    let managedURL = URL(fileURLWithPath: "/staging/put-resume-missing.bin")
+    let payload = Data("missing".utf8)
+    let stateStore = UploadStateStore(
+        persistRoot: FileManager.default.temporaryDirectory.appendingPathComponent("data-gateway-client-put-missing-\(UUID().uuidString)"),
+        fileManager: .default,
+        clock: FixedUploadCoordinatorStoreClock(now: Date(timeIntervalSince1970: 2_800))
+    )
+    try await stateStore.saveActive(
+        makePersistedResumeState(
+            managedFileURL: managedURL,
+            multipartUploadID: nil,
+            phase: .multipartCompleted,
+            fileSize: UInt64(payload.count),
+            firstChunkMD5Hex: "EA21841DA70E6405AF19FABC4FF8BDD9",
+            uploadedParts: [
+                PersistedUploadedPart(partNumber: 1, etag: "\"etag-old\"", offsetStart: 0, partSize: UInt64(payload.count), md5Hex: "EA21841DA70E6405AF19FABC4FF8BDD9"),
+            ]
+        )
+    )
+
+    let gatewayClient = MockUploadCoordinatorGatewayClient(
+        createResponse: makeCreateLogicalUploadResponse(uploadID: "upload-put-restarted", objectKey: "objects/put-restarted.bin", partSizeBytes: 8),
+        recoveryResponse: makeContinueRecoveryResponse(currentUploadID: "upload-put-missing", completedPartCount: 0),
+        reissueResponse: makeReissueResponse(
+            uploadID: "upload-put-missing",
+            credentials: makeCoordinatorUploadCredentials(expireAtUnix: 9_000, tokenSuffix: "put-missing", objectKey: "objects/put-missing.bin", partSizeBytes: 8)
+        ),
+        completeResponse: Archebase_DataGateway_V1_CompleteUploadResponse()
+    )
+    let ossSession = MockOssUploadSession(
+        multipartUploadID: "multipart-unused",
+        uploadedParts: [],
+        completedETag: "\"etag-restarted\"",
+        headObjectError: DataGatewayClientError.ossFailed(httpStatus: 404, ossCode: "NoSuchKey", message: "not found")
+    )
+    let client = DataGatewayClient(
+        uploadCoordinator: UploadCoordinator(
+            executionPolicy: makeExecutionPolicy(),
+            dependencies: UploadCoordinatorDependencies(
+                gatewayClient: gatewayClient,
+                stateStore: stateStore,
+                fileCoordinator: FileStagingCoordinator(
+                    stagingRoot: URL(fileURLWithPath: "/staging"),
+                    fileSystem: MemoryFileSystem(files: [
+                        managedURL: .file(size: UInt64(payload.count), modifiedAt: Date(timeIntervalSince1970: 250), data: payload),
+                    ]),
+                    securityScopedAccessor: PassthroughSecurityScopedAccessor()
+                ),
+                ossClientFactory: { _ in ossSession },
+                clock: FixedUploadCoordinatorClock(now: Date(timeIntervalSince1970: 2_800))
+            )
+        )
+    )
+
+    let result = try await client.resumeUpload(logicalUploadID: "logical-resume")
+
+    #expect(result.uploadID == "upload-put-restarted")
+    #expect(result.ossObjectETag == "\"etag-restarted\"")
+    #expect(await gatewayClient.createRestartInvocations() == [CreateInvocation(clientHints: ["device": "iphone"], restartFromUploadID: "upload-put-missing")])
+    #expect(await ossSession.putObjectCalls() == [payload.count])
+    #expect(await ossSession.initiateCalls() == 0)
+    #expect(await ossSession.uploadCalls().isEmpty)
+    #expect(await gatewayClient.completeInvocations() == [
+        CompleteInvocation(
+            uploadID: "upload-put-restarted",
+            fileSize: Int64(payload.count),
+            rawTags: ["scene": "robot"],
+            completedPartCount: 1,
+            ossObjectEtag: "\"etag-restarted\"",
+            partSizeBytes: 8
+        ),
+    ])
+}
+
+@Test func putObjectResumeETagMismatchRestartsWithPutObject() async throws {
+    let managedURL = URL(fileURLWithPath: "/staging/put-resume-mismatch.bin")
+    let payload = Data("mismatch".utf8)
+    let stateStore = UploadStateStore(
+        persistRoot: FileManager.default.temporaryDirectory.appendingPathComponent("data-gateway-client-put-mismatch-\(UUID().uuidString)"),
+        fileManager: .default,
+        clock: FixedUploadCoordinatorStoreClock(now: Date(timeIntervalSince1970: 2_900))
+    )
+    try await stateStore.saveActive(
+        makePersistedResumeState(
+            managedFileURL: managedURL,
+            multipartUploadID: nil,
+            phase: .multipartCompleted,
+            fileSize: UInt64(payload.count),
+            firstChunkMD5Hex: "1D1C5B76DA944B44DB42C9D0558021C5",
+            uploadedParts: [
+                PersistedUploadedPart(partNumber: 1, etag: "\"etag-old\"", offsetStart: 0, partSize: UInt64(payload.count), md5Hex: "1D1C5B76DA944B44DB42C9D0558021C5"),
+            ]
+        )
+    )
+
+    let gatewayClient = MockUploadCoordinatorGatewayClient(
+        createResponse: makeCreateLogicalUploadResponse(uploadID: "upload-put-mismatch-new", objectKey: "objects/put-mismatch-new.bin", partSizeBytes: 8),
+        recoveryResponse: makeContinueRecoveryResponse(currentUploadID: "upload-put-mismatch", completedPartCount: 0),
+        reissueResponse: makeReissueResponse(
+            uploadID: "upload-put-mismatch",
+            credentials: makeCoordinatorUploadCredentials(expireAtUnix: 9_000, tokenSuffix: "put-mismatch", objectKey: "objects/put-mismatch.bin", partSizeBytes: 8)
+        ),
+        completeResponse: Archebase_DataGateway_V1_CompleteUploadResponse()
+    )
+    let ossSession = MockOssUploadSession(
+        multipartUploadID: "multipart-unused",
+        uploadedParts: [],
+        completedETag: "\"etag-mismatch-new\"",
+        headObjectETag: "\"etag-other\""
+    )
+    let client = DataGatewayClient(
+        uploadCoordinator: UploadCoordinator(
+            executionPolicy: makeExecutionPolicy(),
+            dependencies: UploadCoordinatorDependencies(
+                gatewayClient: gatewayClient,
+                stateStore: stateStore,
+                fileCoordinator: FileStagingCoordinator(
+                    stagingRoot: URL(fileURLWithPath: "/staging"),
+                    fileSystem: MemoryFileSystem(files: [
+                        managedURL: .file(size: UInt64(payload.count), modifiedAt: Date(timeIntervalSince1970: 250), data: payload),
+                    ]),
+                    securityScopedAccessor: PassthroughSecurityScopedAccessor()
+                ),
+                ossClientFactory: { _ in ossSession },
+                clock: FixedUploadCoordinatorClock(now: Date(timeIntervalSince1970: 2_900))
+            )
+        )
+    )
+
+    let result = try await client.resumeUpload(logicalUploadID: "logical-resume")
+
+    #expect(result.uploadID == "upload-put-mismatch-new")
+    #expect(result.ossObjectETag == "\"etag-mismatch-new\"")
+    #expect(await gatewayClient.createRestartInvocations() == [CreateInvocation(clientHints: ["device": "iphone"], restartFromUploadID: "upload-put-mismatch")])
+    #expect(await ossSession.putObjectCalls() == [payload.count])
+    #expect(await ossSession.initiateCalls() == 0)
+    #expect(await ossSession.uploadCalls().isEmpty)
+}
+
 @Test func refreshesCredentialsBeforeNextPartWhenTtlIsLow() async throws {
     let sourceURL = URL(fileURLWithPath: "/files/refresh-next-part.bin")
     let payload = Data(repeating: 0x80, count: 24)
@@ -1757,18 +1977,19 @@ import Testing
         clock: FixedUploadCoordinatorStoreClock(now: Date(timeIntervalSince1970: 3_100))
     )
     let gatewayClient = MockUploadCoordinatorGatewayClient(
-        createResponse: makeCreateLogicalUploadResponse(uploadID: "upload-refresh-complete", objectKey: "objects/refresh-complete.bin", partSizeBytes: 8),
+        createResponse: makeCreateLogicalUploadResponse(uploadID: "upload-refresh-complete", objectKey: "objects/refresh-complete.bin", partSizeBytes: 4),
         recoveryResponse: makeContinueRecoveryResponse(currentUploadID: "upload-refresh-complete"),
-        reissueResponse: makeReissueResponse(uploadID: "upload-refresh-complete", credentials: makeCoordinatorUploadCredentials(expireAtUnix: 5_200, tokenSuffix: "refresh-complete", objectKey: "objects/refresh-complete.bin", partSizeBytes: 8)),
+        reissueResponse: makeReissueResponse(uploadID: "upload-refresh-complete", credentials: makeCoordinatorUploadCredentials(expireAtUnix: 5_200, tokenSuffix: "refresh-complete", objectKey: "objects/refresh-complete.bin", partSizeBytes: 4)),
         completeResponse: Archebase_DataGateway_V1_CompleteUploadResponse()
     )
     let ossSession = RefreshAwareMockOssSession(
         multipartUploadID: "multipart-refresh-complete",
         uploadDescriptors: [
-            UploadedPartDescriptor(partNumber: 1, etag: "\"etag-1\"", size: 8, lastModified: nil, hashCRC64: nil),
+            UploadedPartDescriptor(partNumber: 1, etag: "\"etag-1\"", size: 4, lastModified: nil, hashCRC64: nil),
+            UploadedPartDescriptor(partNumber: 2, etag: "\"etag-2\"", size: 4, lastModified: nil, hashCRC64: nil),
         ],
         completedETag: "\"etag-refresh-complete\"",
-        refreshResults: [false, true],
+        refreshResults: [false, false, true],
         expirations: [
             Date(timeIntervalSince1970: 3_110),
             Date(timeIntervalSince1970: 5_200),
@@ -1796,7 +2017,7 @@ import Testing
 
     let events = await eventRecorder.events()
     #expect(events.contains(.refreshingCredentials(uploadID: "upload-refresh-complete")))
-    #expect(await ossSession.refreshCheckCount() == 2)
+    #expect(await ossSession.refreshCheckCount() == 3)
     let snapshot = try await stateStore.loadSnapshot(logicalUploadID: "logical-1")
     #expect(snapshot?.lastKnownSTSExpireAt == Date(timeIntervalSince1970: 5_200))
 }
@@ -2159,6 +2380,7 @@ private actor RefreshAwareMockOssSession: UploadCoordinatorMultipartSessionProto
     private let refreshError: DataGatewayClientError?
     private var refreshChecks = 0
     private var refreshIndex = 0
+    private var putObjectInvocations: [Int] = []
 
     init(
         multipartUploadID: String,
@@ -2214,6 +2436,17 @@ private actor RefreshAwareMockOssSession: UploadCoordinatorMultipartSessionProto
         return descriptor
     }
 
+    func putObject(body: Data) async throws -> UploadedPartDescriptor {
+        self.putObjectInvocations.append(body.count)
+        return UploadedPartDescriptor(
+            partNumber: 1,
+            etag: self.completedETag,
+            size: Int64(body.count),
+            lastModified: nil,
+            hashCRC64: nil
+        )
+    }
+
     func listParts(multipartUploadID: String) async throws -> [UploadedPartDescriptor] {
         _ = multipartUploadID
         return []
@@ -2235,6 +2468,10 @@ private actor RefreshAwareMockOssSession: UploadCoordinatorMultipartSessionProto
     func refreshCheckCount() -> Int {
         self.refreshChecks
     }
+
+    func putObjectCalls() -> [Int] {
+        self.putObjectInvocations
+    }
 }
 
 private actor MockOssUploadSession: UploadCoordinatorMultipartSessionProtocol {
@@ -2242,16 +2479,21 @@ private actor MockOssUploadSession: UploadCoordinatorMultipartSessionProtocol {
     private let uploadedParts: [UploadedPartDescriptor]
     private let completedETag: String
     private let failOnComplete: DataGatewayClientError?
+    private let failOnPutObject: DataGatewayClientError?
     private let listedParts: [UploadedPartDescriptor]
     private let headObjectETagValue: String?
     private let headObjectError: DataGatewayClientError?
+    private var initiateInvocations = 0
     private var uploadInvocations: [UploadCall] = []
+    private var putObjectInvocations: [Int] = []
+    private var completeInvocations: [[Int]] = []
 
     init(
         multipartUploadID: String,
         uploadedParts: [UploadedPartDescriptor],
         completedETag: String,
         failOnComplete: DataGatewayClientError? = nil,
+        failOnPutObject: DataGatewayClientError? = nil,
         listedParts: [UploadedPartDescriptor]? = nil,
         headObjectETag: String? = nil,
         headObjectError: DataGatewayClientError? = nil
@@ -2260,6 +2502,7 @@ private actor MockOssUploadSession: UploadCoordinatorMultipartSessionProtocol {
         self.uploadedParts = uploadedParts
         self.completedETag = completedETag
         self.failOnComplete = failOnComplete
+        self.failOnPutObject = failOnPutObject
         self.listedParts = listedParts ?? uploadedParts
         self.headObjectETagValue = headObjectETag
         self.headObjectError = headObjectError
@@ -2274,7 +2517,8 @@ private actor MockOssUploadSession: UploadCoordinatorMultipartSessionProtocol {
     }
 
     func initiateMultipartUpload() async throws -> String {
-        self.multipartUploadID
+        self.initiateInvocations += 1
+        return self.multipartUploadID
     }
 
     func uploadPart(
@@ -2287,6 +2531,20 @@ private actor MockOssUploadSession: UploadCoordinatorMultipartSessionProtocol {
             fatalError("missing uploaded part fixture for partNumber=\(partNumber)")
         }
         return descriptor
+    }
+
+    func putObject(body: Data) async throws -> UploadedPartDescriptor {
+        self.putObjectInvocations.append(body.count)
+        if let failOnPutObject {
+            throw failOnPutObject
+        }
+        return UploadedPartDescriptor(
+            partNumber: 1,
+            etag: self.completedETag,
+            size: Int64(body.count),
+            lastModified: nil,
+            hashCRC64: nil
+        )
     }
 
     func listParts(multipartUploadID: String) async throws -> [UploadedPartDescriptor] {
@@ -2306,15 +2564,27 @@ private actor MockOssUploadSession: UploadCoordinatorMultipartSessionProtocol {
         parts: [UploadedPartDescriptor]
     ) async throws -> String {
         _ = multipartUploadID
-        _ = parts
+        self.completeInvocations.append(parts.map(\.partNumber))
         if let failOnComplete {
             throw failOnComplete
         }
         return self.completedETag
     }
 
+    func initiateCalls() -> Int {
+        self.initiateInvocations
+    }
+
     func uploadCalls() -> [UploadCall] {
         self.uploadInvocations
+    }
+
+    func putObjectCalls() -> [Int] {
+        self.putObjectInvocations
+    }
+
+    func completeCalls() -> [[Int]] {
+        self.completeInvocations
     }
 }
 

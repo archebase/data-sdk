@@ -38,6 +38,10 @@ import Testing
         partNumber: 7,
         body: Data("abc".utf8)
     )
+    _ = try await client.putObject(
+        objectKey: "objects/demo.bin",
+        body: Data("put".utf8)
+    )
     _ = try await client.completeMultipartUpload(
         objectKey: "objects/demo.bin",
         multipartUploadID: "upload-1",
@@ -62,6 +66,12 @@ import Testing
     #expect(uploadRequests[0].uploadId == "upload-1")
     #expect(uploadRequests[0].partNumber == 7)
     #expect(try uploadRequests[0].body?.readData() == Data("abc".utf8))
+
+    let putRequests = await sdkClient.putRequests()
+    #expect(putRequests.count == 1)
+    #expect(putRequests[0].bucket == "bucket-1")
+    #expect(putRequests[0].key == "objects/demo.bin")
+    #expect(try putRequests[0].body?.readData() == Data("put".utf8))
 
     let completeRequests = await sdkClient.completeRequests()
     #expect(completeRequests.count == 1)
@@ -131,6 +141,18 @@ import Testing
         hashCRC64: nil
     ))
 
+    let putObject = try await client.putObject(
+        objectKey: "objects/demo.bin",
+        body: Data("put-body".utf8)
+    )
+    #expect(putObject == UploadedPartDescriptor(
+        partNumber: 1,
+        etag: "\"etag-put\"",
+        size: 8,
+        lastModified: nil,
+        hashCRC64: nil
+    ))
+
     let etag = try await client.completeMultipartUpload(
         objectKey: "objects/demo.bin",
         multipartUploadID: "upload-1",
@@ -178,6 +200,45 @@ import Testing
 
     #expect(parts.map(\.partNumber) == [1, 2])
     #expect(parts.map(\.etag) == ["\"etag-1\"", "\"etag-2\""])
+}
+
+@Test func putObjectMissingETagFailsInvalidResponse() async throws {
+    let sdkClient = MockAlibabaOSSSDKClient(
+        initiateValue: OssInitiateMultipartUploadOutput(uploadID: nil),
+        uploadPartValue: OssUploadPartOutput(etag: nil),
+        putValue: OssPutObjectOutput(etag: nil),
+        completeValue: OssCompleteMultipartUploadOutput(etag: nil),
+        listValues: [],
+        headValue: OssHeadObjectOutput(etag: nil)
+    )
+    let client = try OssMultipartClient(configuration: makeConfiguration(), sdkClient: sdkClient)
+
+    let error = await #expect(throws: OssOperationError.self) {
+        try await client.putObject(objectKey: "objects/demo.bin", body: Data("body".utf8))
+    }
+
+    #expect(error == .invalidResponse("PutObject response missing ETag"))
+}
+
+@Test func putObjectURLErrorClassifiesAsRetriableTransportFailure() async throws {
+    let sdkClient = MockAlibabaOSSSDKClient(
+        initiateValue: OssInitiateMultipartUploadOutput(uploadID: nil),
+        uploadPartValue: OssUploadPartOutput(etag: nil),
+        putError: URLError(.timedOut),
+        completeValue: OssCompleteMultipartUploadOutput(etag: nil),
+        listValues: [],
+        headValue: OssHeadObjectOutput(etag: nil)
+    )
+    let client = try OssMultipartClient(configuration: makeConfiguration(), sdkClient: sdkClient)
+
+    let error = await #expect(throws: OssOperationError.self) {
+        try await client.putObject(objectKey: "objects/demo.bin", body: Data("body".utf8))
+    }
+
+    #expect(error == .transportFailure(code: URLError.Code.timedOut.rawValue, message: URLError(.timedOut).localizedDescription))
+    if let error {
+        #expect(OSSDataPlaneErrorMapper.classify(error).action == .retry)
+    }
 }
 
 @Test func ttlLowTriggersClientRebuild() async throws {
@@ -248,6 +309,13 @@ import Testing
             lastModified: nil,
             hashCRC64: nil
         ),
+        putObjectResult: UploadedPartDescriptor(
+            partNumber: 1,
+            etag: "\"etag-put\"",
+            size: 4,
+            lastModified: nil,
+            hashCRC64: nil
+        ),
         completeResult: "\"etag-complete\"",
         headObjectETagResult: "\"etag-head\""
     )
@@ -280,6 +348,7 @@ import Testing
         partNumber: 2,
         body: Data("data".utf8)
     )
+    let putObject = try await session.putObject(body: Data("blob".utf8))
     let completeETag = try await session.completeMultipartUpload(
         multipartUploadID: "multipart-1",
         parts: [uploadedPart]
@@ -287,11 +356,13 @@ import Testing
     let headETag = try await session.headObjectETag()
 
     #expect(uploadedPart.etag == "\"etag-2\"")
+    #expect(putObject.etag == "\"etag-put\"")
     #expect(completeETag == "\"etag-complete\"")
     #expect(headETag == "\"etag-head\"")
     #expect(await provider.requestedUploadIDs() == ["upload-1"])
     #expect(await initialClient.uploadPartCalls().isEmpty)
     #expect(await refreshedClient.uploadPartCalls() == ["multipart-1:2"])
+    #expect(await refreshedClient.putObjectCalls() == ["objects/demo.bin:4"])
     #expect(await refreshedClient.completeCalls() == [[2]])
     #expect(await refreshedClient.headObjectCalls() == ["objects/demo.bin"])
 }
@@ -444,12 +515,15 @@ import Testing
 private actor MockAlibabaOSSSDKClient: AlibabaOSSSDKClientProtocol {
     private let initiateValue: OssInitiateMultipartUploadOutput
     private let uploadPartValue: OssUploadPartOutput
+    private let putValue: OssPutObjectOutput
+    private let putError: (any Error)?
     private let completeValue: OssCompleteMultipartUploadOutput
     private let listValues: [OssListPartsPage]
     private let headValue: OssHeadObjectOutput
 
     private var recordedInitiateRequests: [InitiateMultipartUploadRequest] = []
     private var recordedUploadRequests: [UploadPartRequest] = []
+    private var recordedPutRequests: [PutObjectRequest] = []
     private var recordedCompleteRequests: [CompleteMultipartUploadRequest] = []
     private var recordedAbortRequests: [AbortMultipartUploadRequest] = []
     private var recordedListRequests: [ListPartsRequest] = []
@@ -458,12 +532,16 @@ private actor MockAlibabaOSSSDKClient: AlibabaOSSSDKClientProtocol {
     init(
         initiateValue: OssInitiateMultipartUploadOutput,
         uploadPartValue: OssUploadPartOutput,
+        putValue: OssPutObjectOutput = OssPutObjectOutput(etag: "\"etag-put\""),
+        putError: (any Error)? = nil,
         completeValue: OssCompleteMultipartUploadOutput,
         listValues: [OssListPartsPage],
         headValue: OssHeadObjectOutput
     ) {
         self.initiateValue = initiateValue
         self.uploadPartValue = uploadPartValue
+        self.putValue = putValue
+        self.putError = putError
         self.completeValue = completeValue
         self.listValues = listValues
         self.headValue = headValue
@@ -481,6 +559,16 @@ private actor MockAlibabaOSSSDKClient: AlibabaOSSSDKClientProtocol {
     ) async throws -> OssUploadPartOutput {
         self.recordedUploadRequests.append(request)
         return self.uploadPartValue
+    }
+
+    func putObject(
+        _ request: PutObjectRequest
+    ) async throws -> OssPutObjectOutput {
+        self.recordedPutRequests.append(request)
+        if let putError {
+            throw putError
+        }
+        return self.putValue
     }
 
     func completeMultipartUpload(
@@ -518,6 +606,10 @@ private actor MockAlibabaOSSSDKClient: AlibabaOSSSDKClientProtocol {
         self.recordedUploadRequests
     }
 
+    func putRequests() -> [PutObjectRequest] {
+        self.recordedPutRequests
+    }
+
     func completeRequests() -> [CompleteMultipartUploadRequest] {
         self.recordedCompleteRequests
     }
@@ -539,11 +631,13 @@ private actor RecordingMultipartClient: OssMultipartClientProtocol {
     private let identifier: String
     private let initiateResult: String
     private let uploadPartResult: UploadedPartDescriptor
+    private let putObjectResult: UploadedPartDescriptor
     private let completeResult: String
     private let listPartsResult: [UploadedPartDescriptor]
     private let headObjectETagResult: String
 
     private var recordedUploadPartCalls: [String] = []
+    private var recordedPutObjectCalls: [String] = []
     private var recordedCompleteCalls: [[Int]] = []
     private var recordedHeadObjectCalls: [String] = []
 
@@ -557,6 +651,13 @@ private actor RecordingMultipartClient: OssMultipartClientProtocol {
             lastModified: nil,
             hashCRC64: nil
         ),
+        putObjectResult: UploadedPartDescriptor = UploadedPartDescriptor(
+            partNumber: 1,
+            etag: "\"etag-default\"",
+            size: 1,
+            lastModified: nil,
+            hashCRC64: nil
+        ),
         completeResult: String = "\"etag-default\"",
         listPartsResult: [UploadedPartDescriptor] = [],
         headObjectETagResult: String = "\"etag-default\""
@@ -564,6 +665,7 @@ private actor RecordingMultipartClient: OssMultipartClientProtocol {
         self.identifier = identifier
         self.initiateResult = initiateResult
         self.uploadPartResult = uploadPartResult
+        self.putObjectResult = putObjectResult
         self.completeResult = completeResult
         self.listPartsResult = listPartsResult
         self.headObjectETagResult = headObjectETagResult
@@ -587,6 +689,20 @@ private actor RecordingMultipartClient: OssMultipartClientProtocol {
             size: Int64(body.count),
             lastModified: self.uploadPartResult.lastModified,
             hashCRC64: self.uploadPartResult.hashCRC64
+        )
+    }
+
+    func putObject(
+        objectKey: String,
+        body: Data
+    ) async throws -> UploadedPartDescriptor {
+        self.recordedPutObjectCalls.append("\(objectKey):\(body.count)")
+        return UploadedPartDescriptor(
+            partNumber: 1,
+            etag: self.putObjectResult.etag,
+            size: Int64(body.count),
+            lastModified: self.putObjectResult.lastModified,
+            hashCRC64: self.putObjectResult.hashCRC64
         )
     }
 
@@ -620,6 +736,10 @@ private actor RecordingMultipartClient: OssMultipartClientProtocol {
         self.recordedUploadPartCalls
     }
 
+    func putObjectCalls() -> [String] {
+        self.recordedPutObjectCalls
+    }
+
     func completeCalls() -> [[Int]] {
         self.recordedCompleteCalls
     }
@@ -644,6 +764,13 @@ private actor ThrowingMultipartClient: OssMultipartClientProtocol {
         objectKey: String,
         multipartUploadID: String,
         partNumber: Int,
+        body: Data
+    ) async throws -> UploadedPartDescriptor {
+        throw self.error
+    }
+
+    func putObject(
+        objectKey: String,
         body: Data
     ) async throws -> UploadedPartDescriptor {
         throw self.error

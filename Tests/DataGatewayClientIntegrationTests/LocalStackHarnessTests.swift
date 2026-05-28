@@ -221,6 +221,17 @@ struct LocalStackHarnessTests {
     #expect(config.tls == .plaintext)
 }
 
+@Test func aliyunEnvironmentAppliesRemoteRequestTimeoutOverride() throws {
+    let config = try AliyunOSSTestEnvironment(environment: [
+        "DGW_REAL_AUTH_ENDPOINT": "http://example-auth:50051",
+        "DGW_REAL_GATEWAY_ENDPOINT": "http://example-gateway:50053",
+        "DGW_REAL_CREDENTIAL_BASE64": "credential-base64",
+        "DGW_REAL_REQUEST_TIMEOUT_SECONDS": "120",
+    ]).makeRemoteClientConfig()
+
+    #expect(config.requestTimeout == .seconds(120))
+}
+
 @Test func aliyunEnvironmentRemoteConfigRequiresCredentialBeforeEndpointOverrides() {
     let environment = AliyunOSSTestEnvironment(environment: [:])
 
@@ -609,11 +620,8 @@ struct LocalStackHarnessTests {
     let clientConfig = try uniqueRealClientConfig(from: environment.makeRemoteClientConfig(), label: "events")
     defer { try? FileManager.default.removeItem(at: clientConfig.persistRootURL) }
     let client = try DataGatewayClient(config: clientConfig)
-    let fileURL = try writeRealPayload(
-        Data("aliyun-real-events-payload-\(UUID().uuidString)".utf8),
-        under: clientConfig.persistRootURL,
-        name: "aliyun-real-events"
-    )
+    let payload = Data("aliyun-real-events-payload-\(UUID().uuidString)".utf8)
+    let fileURL = try writeRealPayload(payload, under: clientConfig.persistRootURL, name: "aliyun-real-events")
 
     var events: [UploadEvent] = []
     for try await event in await client.uploadEvents(
@@ -627,18 +635,45 @@ struct LocalStackHarnessTests {
         events.append(event)
     }
 
-    #expect(events.contains(.preparing))
-    #expect(events.contains(.authenticating))
-    #expect(events.contains(.creatingLogicalUpload))
-    #expect(events.contains(where: { if case .initiatingMultipart = $0 { true } else { false } }))
-    #expect(events.contains(where: { if case .uploadingPart = $0 { true } else { false } }))
-    #expect(events.contains(where: { if case .completingMultipart = $0 { true } else { false } }))
-    #expect(events.contains(where: { if case .completingBusinessUpload = $0 { true } else { false } }))
+    assertPutObjectUploadEvents(events)
 
-    guard case .completed(let result) = events.last else {
+    guard let result = completedUploadResult(from: events) else {
         Issue.record("real Aliyun uploadEvents did not end with completed: \(events)")
         return
     }
+    #expect(result.fileSize == UInt64(payload.count))
+    #expect(result.bucket == expectation.bucket)
+    #expect(result.objectKey.hasPrefix(expectation.objectPrefix))
+    #expect(!result.ossObjectETag.isEmpty)
+}
+
+@Test(
+    .enabled(if: realRuntimeIntegrationEnabled)
+) func realAliyunExactPartSizeUploadEventsFlow() async throws {
+    let environment = AliyunOSSTestEnvironment()
+    try environment.validate()
+    let expectation = try environment.remoteUploadExpectation()
+    let clientConfig = try uniqueRealClientConfig(from: environment.makeRemoteClientConfig(), label: "exact-part-size")
+    defer { try? FileManager.default.removeItem(at: clientConfig.persistRootURL) }
+    let client = try DataGatewayClient(config: clientConfig)
+    let size = realPartSizePayloadSizeBytes()
+    let fileURL = try writeRealPayload(Data(repeating: 0x45, count: size), under: clientConfig.persistRootURL, name: "aliyun-real-exact-part-size")
+
+    var events: [UploadEvent] = []
+    for try await event in await client.uploadEvents(
+        UploadRequest(
+            fileURL: fileURL,
+            clientHints: ["suite": "aliyun-real", "mode": "exact-part-size"],
+            rawTags: ["suite": "aliyun-real", "runtime": "exact-part-size"],
+            displayName: "aliyun-real-exact-part-size"
+        )
+    ) {
+        events.append(event)
+    }
+
+    let result = try #require(completedUploadResult(from: events))
+    assertPutObjectUploadEvents(events)
+    #expect(result.fileSize == UInt64(size))
     #expect(result.bucket == expectation.bucket)
     #expect(result.objectKey.hasPrefix(expectation.objectPrefix))
     #expect(!result.ossObjectETag.isEmpty)
@@ -656,8 +691,7 @@ struct LocalStackHarnessTests {
     let size = realMultipartPayloadSizeBytes()
     let fileURL = try writeRealPayload(Data(repeating: 0x5A, count: size), under: clientConfig.persistRootURL, name: "aliyun-real-multipart")
 
-    var uploadedPartCount = 0
-    var completedResult: UploadResult?
+    var events: [UploadEvent] = []
     for try await event in await client.uploadEvents(
         UploadRequest(
             fileURL: fileURL,
@@ -666,15 +700,13 @@ struct LocalStackHarnessTests {
             displayName: "aliyun-real-multipart"
         )
     ) {
-        if case .uploadingPart = event {
-            uploadedPartCount += 1
-        }
-        if case .completed(let result) = event {
-            completedResult = result
-        }
+        events.append(event)
     }
 
-    let result = try #require(completedResult)
+    let result = try #require(completedUploadResult(from: events))
+    let uploadedPartCount = uploadEventCount(events, matching: isUploadingPartEvent)
+    #expect(events.contains(where: isInitiatingMultipartEvent))
+    #expect(events.contains(where: isCompletingMultipartEvent))
     #expect(uploadedPartCount >= 2)
     #expect(result.fileSize == UInt64(size))
     #expect(result.bucket == expectation.bucket)
@@ -909,6 +941,74 @@ private func realMultipartPayloadSizeBytes() -> Int {
         return parsed
     }
     return 67_108_864 + 1024
+}
+
+private func realPartSizePayloadSizeBytes() -> Int {
+    if let value = ProcessInfo.processInfo.environment["DGW_REAL_PART_SIZE_BYTES"],
+        let parsed = Int(value),
+        parsed > 0 {
+        return parsed
+    }
+    return 67_108_864
+}
+
+private func assertPutObjectUploadEvents(_ events: [UploadEvent]) {
+    #expect(events.contains(.preparing))
+    #expect(events.contains(.authenticating))
+    #expect(events.contains(.creatingLogicalUpload))
+    #expect(uploadEventCount(events, matching: isUploadingPartEvent) == 1)
+    #expect(events.contains(where: isCompletingBusinessUploadEvent))
+    #expect(events.last.map(isCompletedEvent) ?? false)
+    #expect(!events.contains(where: isInitiatingMultipartEvent))
+    #expect(!events.contains(where: isCompletingMultipartEvent))
+}
+
+private func completedUploadResult(from events: [UploadEvent]) -> UploadResult? {
+    guard case .completed(let result) = events.last else {
+        return nil
+    }
+    return result
+}
+
+private func uploadEventCount(_ events: [UploadEvent], matching matcher: (UploadEvent) -> Bool) -> Int {
+    events.reduce(0) { count, event in
+        matcher(event) ? count + 1 : count
+    }
+}
+
+private func isInitiatingMultipartEvent(_ event: UploadEvent) -> Bool {
+    if case .initiatingMultipart = event {
+        return true
+    }
+    return false
+}
+
+private func isUploadingPartEvent(_ event: UploadEvent) -> Bool {
+    if case .uploadingPart = event {
+        return true
+    }
+    return false
+}
+
+private func isCompletingMultipartEvent(_ event: UploadEvent) -> Bool {
+    if case .completingMultipart = event {
+        return true
+    }
+    return false
+}
+
+private func isCompletingBusinessUploadEvent(_ event: UploadEvent) -> Bool {
+    if case .completingBusinessUpload = event {
+        return true
+    }
+    return false
+}
+
+private func isCompletedEvent(_ event: UploadEvent) -> Bool {
+    if case .completed = event {
+        return true
+    }
+    return false
 }
 
 private func hasRealUserAuthorizationHeader() -> Bool {
