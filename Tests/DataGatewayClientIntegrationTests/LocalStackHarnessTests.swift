@@ -149,6 +149,7 @@ struct LocalStackHarnessTests {
     #expect(script.contains("DGW_LOCAL_BOOTSTRAP_MAX_TIME_SECONDS"))
     #expect(script.contains("DGW_LOCAL_BOOTSTRAP_CONNECT_TIMEOUT_SECONDS"))
     #expect(script.contains("DGW_LOCAL_OPERATION_API_BASE"))
+    #expect(script.contains("crates/proto/proto"))
     #expect(script.contains(#"BOOTSTRAP_API_KEY_SUFFIX="${BOOTSTRAP_API_KEY_SUFFIX:0:26}""#))
     #expect(script.contains("swift-key-${BOOTSTRAP_API_KEY_SUFFIX}"))
     #expect(script.contains("DGW_LOCAL_BOOTSTRAP_API_KEY_NAME"))
@@ -156,16 +157,27 @@ struct LocalStackHarnessTests {
     #expect(script.contains("DGW_LOCAL_DEVICE_ID"))
     #expect(script.contains("DGW_LOCAL_UNBOUND_DEVICE_ID"))
     #expect(script.contains("DGW_LOCAL_INIT_ENDPOINT"))
+    #expect(script.contains("DGW_LOCAL_BOOTSTRAP_COLLECTOR_DISPLAY_NAME"))
+    #expect(script.contains("DGW_LOCAL_BOOTSTRAP_PROJECT_DISPLAY_NAME"))
     #expect(script.contains("curl -sS -X POST"))
     #expect(script.contains("${OPERATION_API_BASE}/auth/login"))
+    #expect(script.contains("\"csrfToken\""))
+    #expect(script.contains("X-CSRF-Token"))
     #expect(script.contains("${OPERATION_API_BASE}/sites"))
     #expect(script.contains("${OPERATION_API_BASE}/sites/${SITE_ID}/api-keys"))
+    #expect(script.contains("${OPERATION_API_BASE}/collectors"))
+    #expect(script.contains("${OPERATION_API_BASE}/projects"))
     #expect(script.contains("${OPERATION_API_BASE}/devices:register"))
     #expect(script.contains("${OPERATION_API_BASE}/deviceSuites"))
     #expect(script.contains(#""keyName":$(json_string "$BOOTSTRAP_API_KEY_NAME")"#))
+    #expect(script.contains(#""collector":$(json_string "$COLLECTOR_NAME")"#))
+    #expect(script.contains(#""project":$(json_string "$PROJECT_NAME")"#))
     #expect(script.contains(#""suite":$(json_string "$SUITE_NAME")"#))
     #expect(script.contains("CreateSiteApiKey"))
+    #expect(script.contains("CreateCollector"))
+    #expect(script.contains("CreateProject"))
     #expect(script.contains("RemoveDeviceFromSuite"))
+    #expect(script.contains("x-archebase-audit-source-kind"))
     #expect(script.contains(":removeDevice"))
 }
 
@@ -362,18 +374,31 @@ struct LocalStackHarnessTests {
     }
     #expect(zeroByteError == .zeroByteFile)
 
-    let result = try await client.upload(
-        UploadRequest(fileURL: fileURL, clientHints: ["kind": "runtime"], rawTags: ["suite": "local-stack"], displayName: "runtime")
+    let createResponse = try await gatewayClient.createLogicalUpload(
+        clientHints: ["kind": "runtime", "suite": "local-stack"],
+        restartFromUploadID: nil
     )
-    #expect(!result.logicalUploadID.isEmpty)
-    #expect(!result.uploadID.isEmpty)
-    #expect(result.fileSize == UInt64(Data("swift-local-runtime-payload".utf8).count))
-    #expect(!result.bucket.isEmpty)
-    #expect(!result.objectKey.isEmpty)
-    #expect(!result.ossObjectETag.isEmpty)
+    #expect(!createResponse.logicalUploadID.isEmpty)
+    #expect(!createResponse.uploadID.isEmpty)
+    #expect(createResponse.hasCredentials)
+    #expect(!createResponse.credentials.bucket.isEmpty)
+    #expect(!createResponse.credentials.objectKey.isEmpty)
 
-    let pending = try await client.listPendingUploads()
-    #expect(!pending.contains(where: { $0.logicalUploadID == result.logicalUploadID }))
+    let recoveryResponse = try await gatewayClient.getUploadRecovery(logicalUploadID: createResponse.logicalUploadID)
+    #expect(recoveryResponse.logicalUploadID == createResponse.logicalUploadID)
+    #expect(recoveryResponse.currentUploadID == createResponse.uploadID)
+    #expect(recoveryResponse.canRefreshCredentials)
+
+    let reissueResponse = try await gatewayClient.reissueUploadCredentials(uploadID: createResponse.uploadID)
+    #expect(reissueResponse.logicalUploadID == createResponse.logicalUploadID)
+    #expect(!reissueResponse.uploadID.isEmpty)
+    #expect(reissueResponse.hasCredentials)
+
+    let abortResponse = try await gatewayClient.abortUpload(
+        logicalUploadID: createResponse.logicalUploadID,
+        reason: "local mock OSS control-plane cleanup"
+    )
+    #expect(abortResponse.logicalUploadID == createResponse.logicalUploadID)
 
     let resumeError: DGWControlPlane.DataGatewayClientError? = await #expect(throws: DGWControlPlane.DataGatewayClientError.self) {
         try await client.resumeUpload(logicalUploadID: "missing-logical-upload-id")
@@ -447,7 +472,14 @@ struct LocalStackHarnessTests {
         platform: "ios-simulator"
     )
 
-    let config = try await initializer.initDevice(deviceID: initConfig.deviceID)
+    let config: ArchebaseConfig
+    do {
+        config = try await initializer.initDevice(deviceID: initConfig.deviceID)
+    } catch DataGatewayClientError.gatewayFailed(_, let detailCode, _)
+        where detailCode == "DATA_GATEWAY_DEVICE_ALREADY_INITIALIZED"
+    {
+        config = try await initializer.reinitDevice(deviceID: initConfig.deviceID)
+    }
 
     #expect(!config.apiKey.isEmpty)
     #expect(try await ArchebaseConfigStore(configURL: configURL).load() == config)
@@ -513,7 +545,7 @@ struct LocalStackHarnessTests {
         sdkVersion: "local-integration",
         platform: "ios-simulator"
     )
-    _ = try await initializer.initDevice(deviceID: initConfig.deviceID)
+    _ = try await initializer.reinitDevice(deviceID: initConfig.deviceID)
 
     let client = try await DataGatewayClient.testFromArchebaseConfig(
         authEndpoint: clientConfig.authEndpoint,
@@ -530,12 +562,23 @@ struct LocalStackHarnessTests {
     try payload.write(to: fileURL)
     defer { try? FileManager.default.removeItem(at: fileURL) }
 
-    let result = try await client.upload(
+    let uploadError = await #expect(throws: DataGatewayClientError.self) {
+        try await client.upload(
         UploadRequest(fileURL: fileURL, clientHints: ["kind": "device-init"], rawTags: [:], displayName: "device-init")
-    )
+        )
+    }
 
-    #expect(!result.logicalUploadID.isEmpty)
-    #expect(result.fileSize == UInt64(payload.count))
+    guard case .gatewayFailed(_, let detailCode, let message) = uploadError else {
+        Issue.record("unexpected local mock upload error: \(String(describing: uploadError))")
+        return
+    }
+    #expect(detailCode == "DATA_GATEWAY_FAILED_PRECONDITION")
+    #expect(message == "uploaded object does not exist in oss")
+
+    let pending = try await client.listPendingUploads()
+    for upload in pending {
+        try? await client.abortUpload(logicalUploadID: upload.logicalUploadID)
+    }
 }
 
 @Test(

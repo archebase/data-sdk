@@ -6,7 +6,7 @@ PACKAGE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 WORKSPACE_DIR="$(cd "${PACKAGE_DIR}/.." && pwd)"
 DEFAULT_DATA_PLATFORM_ROOT="$(cd "${WORKSPACE_DIR}/data-platform" 2>/dev/null && pwd || true)"
 DATA_PLATFORM_ROOT="${DATA_PLATFORM_ROOT:-$DEFAULT_DATA_PLATFORM_ROOT}"
-DATA_PLATFORM_PROTO_ROOT="${DATA_PLATFORM_PROTO_ROOT:-${DATA_PLATFORM_ROOT}/common/proto}"
+DATA_PLATFORM_PROTO_ROOT="${DATA_PLATFORM_PROTO_ROOT:-${DATA_PLATFORM_ROOT}/crates/proto/proto}"
 
 AUTH_ENDPOINT="${DGW_LOCAL_AUTH_ENDPOINT:-http://127.0.0.1:15055}"
 AUTH_ADMIN_ENDPOINT="${DGW_LOCAL_AUTH_ADMIN_ENDPOINT:-http://127.0.0.1:15054}"
@@ -25,6 +25,10 @@ BOOTSTRAP_DEVICE_DISPLAY_NAME="${DGW_LOCAL_BOOTSTRAP_DEVICE_DISPLAY_NAME:-swift-
 BOOTSTRAP_DEVICE_DESCRIPTION="${DGW_LOCAL_BOOTSTRAP_DEVICE_DESCRIPTION:-Swift local gateway init device}"
 BOOTSTRAP_UNBOUND_DEVICE_DISPLAY_NAME="${DGW_LOCAL_BOOTSTRAP_UNBOUND_DEVICE_DISPLAY_NAME:-swift-local-unbound-device-${BOOTSTRAP_RUN_SUFFIX}}"
 BOOTSTRAP_UNBOUND_DEVICE_DESCRIPTION="${DGW_LOCAL_BOOTSTRAP_UNBOUND_DEVICE_DESCRIPTION:-Swift local unbound gateway init device}"
+BOOTSTRAP_COLLECTOR_DISPLAY_NAME="${DGW_LOCAL_BOOTSTRAP_COLLECTOR_DISPLAY_NAME:-swift-local-collector-${BOOTSTRAP_RUN_SUFFIX}}"
+BOOTSTRAP_COLLECTOR_IDENTITY="${DGW_LOCAL_BOOTSTRAP_COLLECTOR_IDENTITY:-swift-local-collector-${BOOTSTRAP_RUN_SUFFIX}}"
+BOOTSTRAP_PROJECT_DISPLAY_NAME="${DGW_LOCAL_BOOTSTRAP_PROJECT_DISPLAY_NAME:-swift-local-project-${BOOTSTRAP_RUN_SUFFIX}}"
+BOOTSTRAP_PROJECT_DESCRIPTION="${DGW_LOCAL_BOOTSTRAP_PROJECT_DESCRIPTION:-Swift local gateway init project}"
 BOOTSTRAP_SUITE_DISPLAY_NAME="${DGW_LOCAL_BOOTSTRAP_SUITE_DISPLAY_NAME:-swift-local-suite-${BOOTSTRAP_RUN_SUFFIX}}"
 BOOTSTRAP_SUITE_DESCRIPTION="${DGW_LOCAL_BOOTSTRAP_SUITE_DESCRIPTION:-Swift local gateway init suite}"
 BOOTSTRAP_API_KEY_SUFFIX="${BOOTSTRAP_RUN_SUFFIX//[^[:alnum:]-]/-}"
@@ -77,7 +81,7 @@ Environment overrides:
   DGW_LOCAL_BOOTSTRAP_MAX_TIME_SECONDS
   DGW_LOCAL_OPERATION_API_BASE
   DATA_PLATFORM_ROOT (required for --start-stack and grpcurl bootstrap; defaults to ../data-platform)
-  DATA_PLATFORM_PROTO_ROOT (defaults to DATA_PLATFORM_ROOT/common/proto)
+  DATA_PLATFORM_PROTO_ROOT (defaults to DATA_PLATFORM_ROOT/crates/proto/proto)
 
 Notes:
   - The script uses the HTTP admin gateway when DGW_LOCAL_GATEWAY_HTTP_BASE points at data-platform-gateway.
@@ -193,11 +197,20 @@ grpc_call() {
   local method="$2"
   local body="$3"
   shift 3
+  local request_id
+  request_id="$(uuidgen | tr '[:upper:]' '[:lower:]')"
   grpcurl -plaintext \
     -import-path "${DATA_PLATFORM_PROTO_ROOT}" \
     -proto common.proto \
     -proto auth.proto \
     -proto dataplatform/device.proto \
+    -H "x-archebase-audit-request-id: ${request_id}" \
+    -H "x-archebase-audit-trace-id: ${request_id}" \
+    -H "x-archebase-audit-source-kind: dpctl" \
+    -H "x-archebase-audit-source-trust-level: declared_client" \
+    -H "x-archebase-audit-client-name: data-sdk-bootstrap" \
+    -H "x-archebase-audit-client-version: data-sdk-e2e" \
+    -H "x-archebase-audit-client-command: data-sdk.bootstrap.${method##*/}" \
     "$@" \
     -d "$body" \
     "$(grpc_plain_target "$endpoint")" \
@@ -230,14 +243,36 @@ bootstrap_devices_via_grpc() {
 
   local credential_base64="$1"
   local site_id="$2"
-  local admin_token suite_body suite_response suite_name
+  local admin_token collector_body collector_response collector_name project_body project_response project_name suite_body suite_response suite_name
   local device_body device_response device_name device_id
   local unbound_body unbound_response unbound_name unbound_device_id
   local remove_device_body remove_device_response
   admin_token=$(admin_bearer_token)
 
+  collector_body=$(cat <<EOF
+{"displayName":$(json_string "$BOOTSTRAP_COLLECTOR_DISPLAY_NAME"),"identity":$(json_string "$BOOTSTRAP_COLLECTOR_IDENTITY")}
+EOF
+)
+  collector_response=$(grpc_call "$META_ENDPOINT" archebase.meta.v1.DeviceManagementService/CreateCollector "$collector_body" -H "Authorization: Bearer ${admin_token}")
+  collector_name=$(read_json_field "$collector_response" "name")
+  if [[ -z "$collector_name" ]]; then
+    echo "failed to create collector through grpc: $collector_response" >&2
+    exit 1
+  fi
+
+  project_body=$(cat <<EOF
+{"displayName":$(json_string "$BOOTSTRAP_PROJECT_DISPLAY_NAME"),"description":$(json_string "$BOOTSTRAP_PROJECT_DESCRIPTION")}
+EOF
+)
+  project_response=$(grpc_call "$META_ENDPOINT" archebase.meta.v1.DeviceManagementService/CreateProject "$project_body" -H "Authorization: Bearer ${admin_token}")
+  project_name=$(read_json_field "$project_response" "name")
+  if [[ -z "$project_name" ]]; then
+    echo "failed to create project through grpc: $project_response" >&2
+    exit 1
+  fi
+
   suite_body=$(cat <<EOF
-{"siteId":$(json_string "$site_id"),"displayName":$(json_string "$BOOTSTRAP_SUITE_DISPLAY_NAME"),"description":$(json_string "$BOOTSTRAP_SUITE_DESCRIPTION")}
+{"siteId":$(json_string "$site_id"),"displayName":$(json_string "$BOOTSTRAP_SUITE_DISPLAY_NAME"),"description":$(json_string "$BOOTSTRAP_SUITE_DESCRIPTION"),"collector":$(json_string "$collector_name"),"project":$(json_string "$project_name")}
 EOF
 )
   suite_response=$(grpc_call "$META_ENDPOINT" archebase.meta.v1.DeviceManagementService/CreateDeviceSuite "$suite_body" -H "Authorization: Bearer ${admin_token}")
@@ -291,6 +326,7 @@ bootstrap_via_grpc() {
   fi
 
   local admin_token site_body site_response site_id api_key_body api_key_response credential_base64
+  local collector_body collector_response collector_name project_body project_response project_name
   local suite_body suite_response suite_name
   local device_body device_response device_name device_id unbound_body unbound_response unbound_name unbound_device_id
   local remove_device_body remove_device_response
@@ -327,8 +363,30 @@ EOF
     exit 1
   fi
 
+  collector_body=$(cat <<EOF
+{"displayName":$(json_string "$BOOTSTRAP_COLLECTOR_DISPLAY_NAME"),"identity":$(json_string "$BOOTSTRAP_COLLECTOR_IDENTITY")}
+EOF
+)
+  collector_response=$(grpc_call "$META_ENDPOINT" archebase.meta.v1.DeviceManagementService/CreateCollector "$collector_body" -H "Authorization: Bearer ${admin_token}")
+  collector_name=$(read_json_field "$collector_response" "name")
+  if [[ -z "$collector_name" ]]; then
+    echo "failed to create collector through grpc: $collector_response" >&2
+    exit 1
+  fi
+
+  project_body=$(cat <<EOF
+{"displayName":$(json_string "$BOOTSTRAP_PROJECT_DISPLAY_NAME"),"description":$(json_string "$BOOTSTRAP_PROJECT_DESCRIPTION")}
+EOF
+)
+  project_response=$(grpc_call "$META_ENDPOINT" archebase.meta.v1.DeviceManagementService/CreateProject "$project_body" -H "Authorization: Bearer ${admin_token}")
+  project_name=$(read_json_field "$project_response" "name")
+  if [[ -z "$project_name" ]]; then
+    echo "failed to create project through grpc: $project_response" >&2
+    exit 1
+  fi
+
   suite_body=$(cat <<EOF
-{"siteId":$(json_string "$site_id"),"displayName":$(json_string "$BOOTSTRAP_SUITE_DISPLAY_NAME"),"description":$(json_string "$BOOTSTRAP_SUITE_DESCRIPTION")}
+{"siteId":$(json_string "$site_id"),"displayName":$(json_string "$BOOTSTRAP_SUITE_DISPLAY_NAME"),"description":$(json_string "$BOOTSTRAP_SUITE_DESCRIPTION"),"collector":$(json_string "$collector_name"),"project":$(json_string "$project_name")}
 EOF
 )
   suite_response=$(grpc_call "$META_ENDPOINT" archebase.meta.v1.DeviceManagementService/CreateDeviceSuite "$suite_body" -H "Authorization: Bearer ${admin_token}")
@@ -404,6 +462,10 @@ export DGW_LOCAL_BOOTSTRAP_DEVICE_DISPLAY_NAME='${BOOTSTRAP_DEVICE_DISPLAY_NAME}
 export DGW_LOCAL_BOOTSTRAP_DEVICE_DESCRIPTION='${BOOTSTRAP_DEVICE_DESCRIPTION}'
 export DGW_LOCAL_BOOTSTRAP_UNBOUND_DEVICE_DISPLAY_NAME='${BOOTSTRAP_UNBOUND_DEVICE_DISPLAY_NAME}'
 export DGW_LOCAL_BOOTSTRAP_UNBOUND_DEVICE_DESCRIPTION='${BOOTSTRAP_UNBOUND_DEVICE_DESCRIPTION}'
+export DGW_LOCAL_BOOTSTRAP_COLLECTOR_DISPLAY_NAME='${BOOTSTRAP_COLLECTOR_DISPLAY_NAME}'
+export DGW_LOCAL_BOOTSTRAP_COLLECTOR_IDENTITY='${BOOTSTRAP_COLLECTOR_IDENTITY}'
+export DGW_LOCAL_BOOTSTRAP_PROJECT_DISPLAY_NAME='${BOOTSTRAP_PROJECT_DISPLAY_NAME}'
+export DGW_LOCAL_BOOTSTRAP_PROJECT_DESCRIPTION='${BOOTSTRAP_PROJECT_DESCRIPTION}'
 export DGW_LOCAL_BOOTSTRAP_SUITE_DISPLAY_NAME='${BOOTSTRAP_SUITE_DISPLAY_NAME}'
 export DGW_LOCAL_BOOTSTRAP_SUITE_DESCRIPTION='${BOOTSTRAP_SUITE_DESCRIPTION}'
 export DGW_LOCAL_BOOTSTRAP_API_KEY_ID='${BOOTSTRAP_API_KEY_ID}'
@@ -449,6 +511,10 @@ EOF
     export DGW_LOCAL_BOOTSTRAP_DEVICE_DESCRIPTION="$BOOTSTRAP_DEVICE_DESCRIPTION"
     export DGW_LOCAL_BOOTSTRAP_UNBOUND_DEVICE_DISPLAY_NAME="$BOOTSTRAP_UNBOUND_DEVICE_DISPLAY_NAME"
     export DGW_LOCAL_BOOTSTRAP_UNBOUND_DEVICE_DESCRIPTION="$BOOTSTRAP_UNBOUND_DEVICE_DESCRIPTION"
+    export DGW_LOCAL_BOOTSTRAP_COLLECTOR_DISPLAY_NAME="$BOOTSTRAP_COLLECTOR_DISPLAY_NAME"
+    export DGW_LOCAL_BOOTSTRAP_COLLECTOR_IDENTITY="$BOOTSTRAP_COLLECTOR_IDENTITY"
+    export DGW_LOCAL_BOOTSTRAP_PROJECT_DISPLAY_NAME="$BOOTSTRAP_PROJECT_DISPLAY_NAME"
+    export DGW_LOCAL_BOOTSTRAP_PROJECT_DESCRIPTION="$BOOTSTRAP_PROJECT_DESCRIPTION"
     export DGW_LOCAL_BOOTSTRAP_SUITE_DISPLAY_NAME="$BOOTSTRAP_SUITE_DISPLAY_NAME"
     export DGW_LOCAL_BOOTSTRAP_SUITE_DESCRIPTION="$BOOTSTRAP_SUITE_DESCRIPTION"
     export DGW_LOCAL_BOOTSTRAP_API_KEY_ID="$BOOTSTRAP_API_KEY_ID"
@@ -520,8 +586,8 @@ LOGIN_RESPONSE=$(curl -sS -c "$COOKIE_JAR" -X POST "${GATEWAY_HTTP_BASE%/}${OPER
   -H "Origin: ${BOOTSTRAP_CSRF_ORIGIN}" \
   --data "$LOGIN_BODY")
 
-TOKEN_TYPE=$(read_json_field "$LOGIN_RESPONSE" "tokenType")
-if [[ "$TOKEN_TYPE" != "Bearer" ]]; then
+CSRF_TOKEN=$(read_json_field "$LOGIN_RESPONSE" "csrfToken")
+if [[ -z "$CSRF_TOKEN" ]]; then
   echo "bootstrap login failed: $LOGIN_RESPONSE" >&2
   echo "falling back to grpc bootstrap" >&2
   bootstrap_via_grpc
@@ -534,6 +600,7 @@ EOF
 )
 SITE_RESPONSE=$(http_post "${GATEWAY_HTTP_BASE%/}${OPERATION_API_BASE}/sites" "$SITE_BODY" \
   -H "Origin: ${BOOTSTRAP_CSRF_ORIGIN}" \
+  -H "X-CSRF-Token: ${CSRF_TOKEN}" \
   -b "$COOKIE_JAR")
 SITE_ID=$(read_json_field "$SITE_RESPONSE" "site.siteId")
 if [[ -z "$SITE_ID" ]]; then
@@ -547,6 +614,7 @@ EOF
 )
 API_KEY_RESPONSE=$(http_post "${GATEWAY_HTTP_BASE%/}${OPERATION_API_BASE}/sites/${SITE_ID}/api-keys" "$API_KEY_BODY" \
   -H "Origin: ${BOOTSTRAP_CSRF_ORIGIN}" \
+  -H "X-CSRF-Token: ${CSRF_TOKEN}" \
   -b "$COOKIE_JAR")
 CREDENTIAL_BASE64=$(read_json_field "$API_KEY_RESPONSE" "credential")
 if [[ -z "$CREDENTIAL_BASE64" ]]; then
@@ -557,12 +625,47 @@ if [[ -z "$CREDENTIAL_BASE64" ]]; then
   exit 1
 fi
 
+COLLECTOR_BODY=$(cat <<EOF
+{"displayName":$(json_string "$BOOTSTRAP_COLLECTOR_DISPLAY_NAME"),"identity":$(json_string "$BOOTSTRAP_COLLECTOR_IDENTITY")}
+EOF
+)
+COLLECTOR_RESPONSE=$(http_post "${GATEWAY_HTTP_BASE%/}${OPERATION_API_BASE}/collectors" "$COLLECTOR_BODY" \
+  -H "Origin: ${BOOTSTRAP_CSRF_ORIGIN}" \
+  -H "X-CSRF-Token: ${CSRF_TOKEN}" \
+  -b "$COOKIE_JAR")
+COLLECTOR_NAME=$(read_json_field "$COLLECTOR_RESPONSE" "collector.name")
+if [[ -z "$COLLECTOR_NAME" ]]; then
+  COLLECTOR_NAME=$(read_json_field "$COLLECTOR_RESPONSE" "name")
+fi
+if [[ -z "$COLLECTOR_NAME" ]]; then
+  echo "failed to create collector: $COLLECTOR_RESPONSE" >&2
+  exit 1
+fi
+
+PROJECT_BODY=$(cat <<EOF
+{"displayName":$(json_string "$BOOTSTRAP_PROJECT_DISPLAY_NAME"),"description":$(json_string "$BOOTSTRAP_PROJECT_DESCRIPTION")}
+EOF
+)
+PROJECT_RESPONSE=$(http_post "${GATEWAY_HTTP_BASE%/}${OPERATION_API_BASE}/projects" "$PROJECT_BODY" \
+  -H "Origin: ${BOOTSTRAP_CSRF_ORIGIN}" \
+  -H "X-CSRF-Token: ${CSRF_TOKEN}" \
+  -b "$COOKIE_JAR")
+PROJECT_NAME=$(read_json_field "$PROJECT_RESPONSE" "project.name")
+if [[ -z "$PROJECT_NAME" ]]; then
+  PROJECT_NAME=$(read_json_field "$PROJECT_RESPONSE" "name")
+fi
+if [[ -z "$PROJECT_NAME" ]]; then
+  echo "failed to create project: $PROJECT_RESPONSE" >&2
+  exit 1
+fi
+
 SUITE_BODY=$(cat <<EOF
-{"siteId":$(json_string "$SITE_ID"),"displayName":$(json_string "$BOOTSTRAP_SUITE_DISPLAY_NAME"),"description":$(json_string "$BOOTSTRAP_SUITE_DESCRIPTION")}
+{"siteId":$(json_string "$SITE_ID"),"displayName":$(json_string "$BOOTSTRAP_SUITE_DISPLAY_NAME"),"description":$(json_string "$BOOTSTRAP_SUITE_DESCRIPTION"),"collector":$(json_string "$COLLECTOR_NAME"),"project":$(json_string "$PROJECT_NAME")}
 EOF
 )
 SUITE_RESPONSE=$(http_post "${GATEWAY_HTTP_BASE%/}${OPERATION_API_BASE}/deviceSuites" "$SUITE_BODY" \
   -H "Origin: ${BOOTSTRAP_CSRF_ORIGIN}" \
+  -H "X-CSRF-Token: ${CSRF_TOKEN}" \
   -b "$COOKIE_JAR")
 SUITE_NAME=$(read_json_field "$SUITE_RESPONSE" "name")
 if [[ -z "$SUITE_NAME" ]]; then
@@ -576,6 +679,7 @@ EOF
 )
 DEVICE_RESPONSE=$(http_post "${GATEWAY_HTTP_BASE%/}${OPERATION_API_BASE}/devices:register" "$DEVICE_BODY" \
   -H "Origin: ${BOOTSTRAP_CSRF_ORIGIN}" \
+  -H "X-CSRF-Token: ${CSRF_TOKEN}" \
   -b "$COOKIE_JAR")
 DEVICE_NAME=$(read_json_field "$DEVICE_RESPONSE" "name")
 if [[ -z "$DEVICE_NAME" ]]; then
@@ -596,6 +700,7 @@ EOF
 )
 UNBOUND_DEVICE_RESPONSE=$(http_post "${GATEWAY_HTTP_BASE%/}${OPERATION_API_BASE}/devices:register" "$UNBOUND_DEVICE_BODY" \
   -H "Origin: ${BOOTSTRAP_CSRF_ORIGIN}" \
+  -H "X-CSRF-Token: ${CSRF_TOKEN}" \
   -b "$COOKIE_JAR")
 UNBOUND_DEVICE_NAME=$(read_json_field "$UNBOUND_DEVICE_RESPONSE" "name")
 if [[ -z "$UNBOUND_DEVICE_NAME" ]]; then
@@ -610,6 +715,7 @@ EOF
 )
 REMOVE_DEVICE_RESPONSE=$(http_post "${GATEWAY_HTTP_BASE%/}${OPERATION_API_BASE}/${SUITE_NAME}:removeDevice" "$REMOVE_DEVICE_BODY" \
   -H "Origin: ${BOOTSTRAP_CSRF_ORIGIN}" \
+  -H "X-CSRF-Token: ${CSRF_TOKEN}" \
   -b "$COOKIE_JAR")
 if [[ -n "$REMOVE_DEVICE_RESPONSE" && "$REMOVE_DEVICE_RESPONSE" != "{}" ]]; then
   echo "failed to unbind device from suite: $REMOVE_DEVICE_RESPONSE" >&2

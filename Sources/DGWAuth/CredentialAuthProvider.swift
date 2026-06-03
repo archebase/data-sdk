@@ -189,7 +189,7 @@ package actor CredentialAuthProvider {
             return nil
         }
 
-        return try? Archebase_Common_V1_ErrorDetail(serializedBytes: bytes)
+        return ArchebaseErrorDetailDecoder.decode(fromStatusDetailsBytes: bytes)
     }
 }
 

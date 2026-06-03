@@ -463,15 +463,48 @@ private func makeRPCError(
     detail.code = detailCode
     detail.message = detailMessage
 
-    let bytes: [UInt8]
+    let detailBytes: [UInt8]
     do {
-        bytes = try detail.serializedBytes()
+        detailBytes = try detail.serializedBytes()
     } catch {
         Issue.record("failed to encode error detail: \(error)")
         return RPCError(code: code, message: message)
     }
 
     var metadata = Metadata()
-    metadata.addBinary(bytes, forKey: "grpc-status-details-bin")
+    metadata.addBinary(
+        googleRpcStatusBytes(code: code.rawValue, message: message, detailBytes: detailBytes),
+        forKey: "grpc-status-details-bin"
+    )
     return RPCError(code: code, message: message, metadata: metadata)
+}
+
+private func googleRpcStatusBytes(code: Int, message: String, detailBytes: [UInt8]) -> [UInt8] {
+    let anyBytes = lengthDelimitedField(1, Array("type.googleapis.com/archebase.common.v1.ErrorDetail".utf8))
+        + lengthDelimitedField(2, detailBytes)
+    return varintField(1, UInt64(code))
+        + lengthDelimitedField(2, Array(message.utf8))
+        + lengthDelimitedField(3, anyBytes)
+}
+
+private func varintField(_ fieldNumber: UInt64, _ value: UInt64) -> [UInt8] {
+    encodeVarint((fieldNumber << 3) | 0) + encodeVarint(value)
+}
+
+private func lengthDelimitedField(_ fieldNumber: UInt64, _ bytes: [UInt8]) -> [UInt8] {
+    encodeVarint((fieldNumber << 3) | 2) + encodeVarint(UInt64(bytes.count)) + bytes
+}
+
+private func encodeVarint(_ value: UInt64) -> [UInt8] {
+    var remaining = value
+    var bytes: [UInt8] = []
+    repeat {
+        var byte = UInt8(remaining & 0x7F)
+        remaining >>= 7
+        if remaining != 0 {
+            byte |= 0x80
+        }
+        bytes.append(byte)
+    } while remaining != 0
+    return bytes
 }
