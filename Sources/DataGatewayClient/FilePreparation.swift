@@ -104,12 +104,13 @@ public struct DataGatewayClientObservability: Sendable {
     public static let disabled = DataGatewayClientObservability()
 }
 
-/// Persistence knobs that affect local snapshot retention and staging behavior.
+/// Persistence knobs that affect local snapshot retention and direct-file upload behavior.
 public struct LocalPersistencePolicy: Sendable, Equatable {
     public var keepTerminalSnapshot: Bool
     public var keepCompletedSnapshot: Bool
     public var completedSnapshotTTL: Duration
     public var terminalSnapshotTTL: Duration
+    /// Compatibility flag retained for callers that already set it; new uploads always read the source file directly.
     public var copyExternalFileIntoManagedStaging: Bool
 
     public init(
@@ -132,7 +133,7 @@ public struct LocalPersistencePolicy: Sendable, Equatable {
         keepCompletedSnapshot: false,
         completedSnapshotTTL: .seconds(0),
         terminalSnapshotTTL: .seconds(3600),
-        copyExternalFileIntoManagedStaging: true
+        copyExternalFileIntoManagedStaging: false
     )
 }
 
@@ -530,25 +531,85 @@ package final class DeviceInitRuntimeResources: @unchecked Sendable {
 }
 
 package protocol SecurityScopedFileAccessing: Sendable {
-    func access<Result: Sendable>(_ fileURL: URL, operation: @Sendable () throws -> Result) rethrows -> Result
+    func access<Result: Sendable>(_ fileURL: URL, operation: @Sendable () throws -> Result) throws -> Result
+    func access<Result: Sendable>(_ fileURL: URL, operation: @Sendable () async throws -> Result) async throws -> Result
+    func access<Result: Sendable>(
+        _ fileURL: URL,
+        bookmarkData: Data?,
+        operation: @Sendable (_ accessibleURL: URL) throws -> Result
+    ) throws -> Result
+    func access<Result: Sendable>(
+        _ fileURL: URL,
+        bookmarkData: Data?,
+        operation: @Sendable (_ accessibleURL: URL) async throws -> Result
+    ) async throws -> Result
     func bookmarkData(for fileURL: URL) throws -> Data
 }
 
 package struct SecurityScopedFileAccessor: SecurityScopedFileAccessing {
     package init() {}
 
-    package func access<Result: Sendable>(_ fileURL: URL, operation: @Sendable () throws -> Result) rethrows -> Result {
-        let started = fileURL.startAccessingSecurityScopedResource()
+    package func access<Result: Sendable>(_ fileURL: URL, operation: @Sendable () throws -> Result) throws -> Result {
+        try self.access(fileURL, bookmarkData: nil) { _ in
+            try operation()
+        }
+    }
+
+    package func access<Result: Sendable>(_ fileURL: URL, operation: @Sendable () async throws -> Result) async throws -> Result {
+        try await self.access(fileURL, bookmarkData: nil) { _ in
+            try await operation()
+        }
+    }
+
+    package func access<Result: Sendable>(
+        _ fileURL: URL,
+        bookmarkData: Data?,
+        operation: @Sendable (_ accessibleURL: URL) throws -> Result
+    ) throws -> Result {
+        let scopedURL = self.resolveSecurityScopedURL(fileURL: fileURL, bookmarkData: bookmarkData)
+        let started = scopedURL.startAccessingSecurityScopedResource()
         defer {
             if started {
-                fileURL.stopAccessingSecurityScopedResource()
+                scopedURL.stopAccessingSecurityScopedResource()
             }
         }
-        return try operation()
+        return try operation(scopedURL)
+    }
+
+    package func access<Result: Sendable>(
+        _ fileURL: URL,
+        bookmarkData: Data?,
+        operation: @Sendable (_ accessibleURL: URL) async throws -> Result
+    ) async throws -> Result {
+        let scopedURL = self.resolveSecurityScopedURL(fileURL: fileURL, bookmarkData: bookmarkData)
+        let started = scopedURL.startAccessingSecurityScopedResource()
+        defer {
+            if started {
+                scopedURL.stopAccessingSecurityScopedResource()
+            }
+        }
+        return try await operation(scopedURL)
     }
 
     package func bookmarkData(for fileURL: URL) throws -> Data {
-        try fileURL.bookmarkData(options: [.minimalBookmark], includingResourceValuesForKeys: nil, relativeTo: nil)
+        try fileURL.bookmarkData(options: [.minimalBookmark, .withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil)
+    }
+
+    private func resolveSecurityScopedURL(fileURL: URL, bookmarkData: Data?) -> URL {
+        guard let bookmarkData else {
+            return fileURL
+        }
+
+        var bookmarkDataIsStale = false
+        guard let resolvedURL = try? URL(
+            resolvingBookmarkData: bookmarkData,
+            options: [.withSecurityScope],
+            relativeTo: nil,
+            bookmarkDataIsStale: &bookmarkDataIsStale
+        ) else {
+            return fileURL
+        }
+        return resolvedURL.standardizedFileURL
     }
 }
 
@@ -556,7 +617,8 @@ package protocol FileSystemProviding: Sendable {
     func fileExists(at url: URL) -> Bool
     func attributes(at url: URL) throws -> [FileAttributeKey: Any]
     func read(prefixFrom url: URL, maxLength: Int) throws -> Data
-    func readAll(from url: URL) throws -> Data
+    func readRange(from url: URL, offset: UInt64, maxLength: Int) throws -> Data
+    func inputStream(from url: URL, offset: UInt64, length: UInt64) throws -> InputStream
     func createDirectory(at url: URL) throws
     func copyItem(at sourceURL: URL, to destinationURL: URL) throws
 }
@@ -578,8 +640,15 @@ package struct LocalFileSystem: FileSystemProviding {
         return try handle.read(upToCount: maxLength) ?? Data()
     }
 
-    package func readAll(from url: URL) throws -> Data {
-        try Data(contentsOf: url)
+    package func readRange(from url: URL, offset: UInt64, maxLength: Int) throws -> Data {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        try handle.seek(toOffset: offset)
+        return try handle.read(upToCount: maxLength) ?? Data()
+    }
+
+    package func inputStream(from url: URL, offset: UInt64, length: UInt64) throws -> InputStream {
+        FileRangeInputStream(fileURL: url, offset: offset, length: length)
     }
 
     package func createDirectory(at url: URL) throws {
@@ -591,6 +660,123 @@ package struct LocalFileSystem: FileSystemProviding {
             try FileManager.default.removeItem(at: destinationURL)
         }
         try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+    }
+}
+
+private final class FileRangeInputStream: InputStream, @unchecked Sendable {
+    private let fileURL: URL
+    private let offset: UInt64
+    private let length: UInt64
+    private var handle: FileHandle?
+    private var remaining: UInt64
+    private var statusValue: Stream.Status = .notOpen
+    private var errorValue: (any Error)?
+    private var delegateValue: StreamDelegate?
+
+    init(fileURL: URL, offset: UInt64, length: UInt64) {
+        self.fileURL = fileURL
+        self.offset = offset
+        self.length = length
+        self.remaining = length
+        super.init(data: Data())
+    }
+
+    override var streamStatus: Stream.Status {
+        self.statusValue
+    }
+
+    override var streamError: (any Error)? {
+        self.errorValue
+    }
+
+    override var delegate: StreamDelegate? {
+        get {
+            self.delegateValue
+        }
+        set {
+            self.delegateValue = newValue
+        }
+    }
+
+    override var hasBytesAvailable: Bool {
+        self.statusValue == .open && self.remaining > 0
+    }
+
+    override func open() {
+        do {
+            let handle = try FileHandle(forReadingFrom: self.fileURL)
+            try handle.seek(toOffset: self.offset)
+            self.handle = handle
+            self.remaining = self.length
+            self.errorValue = nil
+            self.statusValue = self.remaining == 0 ? .atEnd : .open
+        } catch {
+            self.errorValue = error
+            self.statusValue = .error
+        }
+    }
+
+    override func close() {
+        try? self.handle?.close()
+        self.handle = nil
+        if self.statusValue != .error {
+            self.statusValue = .closed
+        }
+    }
+
+    override func read(_ buffer: UnsafeMutablePointer<UInt8>, maxLength len: Int) -> Int {
+        guard self.statusValue == .open else {
+            return self.statusValue == .atEnd ? 0 : -1
+        }
+        guard self.remaining > 0 else {
+            self.statusValue = .atEnd
+            return 0
+        }
+        guard let handle else {
+            self.errorValue = CocoaError(.fileReadUnknown)
+            self.statusValue = .error
+            return -1
+        }
+
+        do {
+            let readLength = min(len, Int(min(self.remaining, UInt64(Int.max))))
+            guard readLength > 0 else {
+                self.statusValue = .atEnd
+                return 0
+            }
+            let data = try handle.read(upToCount: readLength) ?? Data()
+            guard !data.isEmpty else {
+                self.statusValue = .atEnd
+                return 0
+            }
+            data.copyBytes(to: buffer, count: data.count)
+            self.remaining -= UInt64(data.count)
+            if self.remaining == 0 {
+                self.statusValue = .atEnd
+            }
+            return data.count
+        } catch {
+            self.errorValue = error
+            self.statusValue = .error
+            return -1
+        }
+    }
+
+    override func schedule(in aRunLoop: RunLoop, forMode mode: RunLoop.Mode) {
+        _ = (aRunLoop, mode)
+    }
+
+    override func remove(from aRunLoop: RunLoop, forMode mode: RunLoop.Mode) {
+        _ = (aRunLoop, mode)
+    }
+
+    override func getBuffer(
+        _ buffer: UnsafeMutablePointer<UnsafeMutablePointer<UInt8>?>,
+        length len: UnsafeMutablePointer<Int>
+    ) -> Bool {
+        buffer.pointee = nil
+        len.pointee = 0
+        return false
     }
 }
 
@@ -616,8 +802,19 @@ package struct PreparedLocalFile: Sendable, Equatable {
     }
 }
 
+package struct LocalFileMD5Checksum: Sendable, Equatable {
+    package let hex: String
+    package let base64: String
+
+    package init(hex: String, base64: String) {
+        self.hex = hex
+        self.base64 = base64
+    }
+}
+
 package struct FileStagingCoordinator: Sendable {
     private static let modifiedAtComparisonTolerance: TimeInterval = 1
+    private static let md5ChunkSize = 1024 * 1024
 
     private let stagingRoot: URL
     private let fileSystem: any FileSystemProviding
@@ -659,9 +856,8 @@ package struct FileStagingCoordinator: Sendable {
                 firstChunkMD5Hex: Self.md5Hex(firstChunk)
             )
 
-            let managedFileURL = persistence.copyExternalFileIntoManagedStaging
-                ? try self.copyToManagedStaging(sourceURL)
-                : sourceURL
+            _ = persistence.copyExternalFileIntoManagedStaging
+            let managedFileURL = sourceURL
 
             return PreparedLocalFile(
                 sourceFileURL: sourceURL,
@@ -675,33 +871,60 @@ package struct FileStagingCoordinator: Sendable {
 
     package func validatePreparedFile(
         managedFileURL: URL,
+        bookmarkData: Data? = nil,
         expectedFingerprint: LocalFileFingerprint
     ) throws {
-        guard self.fileSystem.fileExists(at: managedFileURL) else {
-            throw DataGatewayClientError.resumeNotPossible("managed file missing: \(managedFileURL.path)")
+        try self.securityScopedAccessor.access(managedFileURL, bookmarkData: bookmarkData) { accessibleURL in
+            guard self.fileSystem.fileExists(at: accessibleURL) else {
+                throw DataGatewayClientError.resumeNotPossible("source file missing: \(managedFileURL.path)")
+            }
+
+            let attributes = try self.fileSystem.attributes(at: accessibleURL)
+            let actualFingerprint = LocalFileFingerprint(
+                size: try Self.resolveFileSize(from: attributes),
+                modifiedAt: attributes[.modificationDate] as? Date,
+                firstChunkMD5Hex: Self.md5Hex(try self.fileSystem.read(prefixFrom: accessibleURL, maxLength: 1024 * 1024))
+            )
+
+            guard Self.fingerprintsMatch(actual: actualFingerprint, expected: expectedFingerprint) else {
+                throw DataGatewayClientError.resumeNotPossible("local file fingerprint changed")
+            }
+        }
+    }
+
+    package func accessPreparedFile<Result: Sendable>(
+        fileURL: URL,
+        bookmarkData: Data?,
+        operation: @Sendable (_ accessibleURL: URL) async throws -> Result
+    ) async throws -> Result {
+        try await self.securityScopedAccessor.access(fileURL, bookmarkData: bookmarkData, operation: operation)
+    }
+
+    package func inputStream(from fileURL: URL, offset: UInt64, length: UInt64) throws -> InputStream {
+        try self.fileSystem.inputStream(from: fileURL, offset: offset, length: length)
+    }
+
+    package func md5Checksum(from fileURL: URL, offset: UInt64, length: UInt64) throws -> LocalFileMD5Checksum {
+        var hasher = Insecure.MD5()
+        var cursor = offset
+        var remaining = length
+
+        while remaining > 0 {
+            let chunkLength = min(Self.md5ChunkSize, Int(min(remaining, UInt64(Self.md5ChunkSize))))
+            let chunk = try self.fileSystem.readRange(from: fileURL, offset: cursor, maxLength: chunkLength)
+            guard !chunk.isEmpty else {
+                throw DataGatewayClientError.invalidLocalFile("unexpected EOF while reading local file range")
+            }
+            hasher.update(data: chunk)
+            cursor += UInt64(chunk.count)
+            remaining -= UInt64(chunk.count)
         }
 
-        let attributes = try self.fileSystem.attributes(at: managedFileURL)
-        let actualFingerprint = LocalFileFingerprint(
-            size: try Self.resolveFileSize(from: attributes),
-            modifiedAt: attributes[.modificationDate] as? Date,
-            firstChunkMD5Hex: Self.md5Hex(try self.fileSystem.read(prefixFrom: managedFileURL, maxLength: 1024 * 1024))
+        let digest = hasher.finalize()
+        return LocalFileMD5Checksum(
+            hex: Self.md5Hex(digest),
+            base64: Data(digest).base64EncodedString()
         )
-
-        guard Self.fingerprintsMatch(actual: actualFingerprint, expected: expectedFingerprint) else {
-            throw DataGatewayClientError.resumeNotPossible("local file fingerprint changed")
-        }
-    }
-
-    package func readAll(from fileURL: URL) throws -> Data {
-        try self.fileSystem.readAll(from: fileURL)
-    }
-
-    private func copyToManagedStaging(_ sourceURL: URL) throws -> URL {
-        try self.fileSystem.createDirectory(at: self.stagingRoot)
-        let destinationURL = self.stagingRoot.appendingPathComponent(UUID().uuidString).appendingPathExtension(sourceURL.pathExtension)
-        try self.fileSystem.copyItem(at: sourceURL, to: destinationURL)
-        return destinationURL
     }
 
     private static func resolveFileSize(from attributes: [FileAttributeKey: Any]) throws -> UInt64 {
@@ -713,6 +936,10 @@ package struct FileStagingCoordinator: Sendable {
 
     private static func md5Hex(_ data: Data) -> String {
         let digest = Insecure.MD5.hash(data: data)
+        return Self.md5Hex(digest)
+    }
+
+    private static func md5Hex(_ digest: Insecure.MD5.Digest) -> String {
         return digest.map { String(format: "%02X", $0) }.joined()
     }
 
@@ -951,9 +1178,9 @@ package protocol UploadCoordinatorMultipartSessionProtocol: Sendable {
     func uploadPart(
         multipartUploadID: String,
         partNumber: Int,
-        body: Data
+        body: OssUploadBody
     ) async throws -> UploadedPartDescriptor
-    func putObject(body: Data) async throws -> UploadedPartDescriptor
+    func putObject(body: OssUploadBody) async throws -> UploadedPartDescriptor
     func listParts(multipartUploadID: String) async throws -> [UploadedPartDescriptor]
     func headObjectETag() async throws -> String
     func completeMultipartUpload(
@@ -1083,6 +1310,7 @@ public actor UploadCoordinator {
         await self.emitLog(operation: "resume", logicalUploadID: logicalUploadID, phase: "resolving", message: "resuming persisted upload")
         try self.dependencies.fileCoordinator.validatePreparedFile(
             managedFileURL: state.managedFileURL,
+            bookmarkData: state.fileURLBookmarkData,
             expectedFingerprint: state.fileFingerprint
         )
 
@@ -1310,27 +1538,13 @@ public actor UploadCoordinator {
             throw DataGatewayClientError.uploadRestartExceeded
         }
 
-        await onEvent?(.completingBusinessUpload(uploadID: resumedState.uploadID))
-        _ = try await self.dependencies.gatewayClient.completeUpload(
-            uploadID: resumedState.uploadID,
-            fileSize: Int64(resumedState.fileSize),
-            rawTags: resumedState.rawTags,
-            completedPartCount: Int32(resumedState.uploadedParts.count),
-            ossObjectEtag: remoteETag,
-            partSizeBytes: Int64(resumedState.partSizeBytes)
-        )
-
-        resumedState.phase = .businessCompleting
-        resumedState.updatedAt = await self.dependencies.clock.now()
-        try await self.dependencies.stateStore.moveToCompleted(resumedState)
-
-        let result = UploadResult(
-            logicalUploadID: resumedState.logicalUploadID,
-            uploadID: resumedState.uploadID,
-            bucket: resumedState.bucket,
-            objectKey: resumedState.objectKey,
-            fileSize: resumedState.fileSize,
-            ossObjectETag: remoteETag
+        let result = try await self.completeBusinessUpload(
+            state: &resumedState,
+            uploadCompletion: DataPlaneUploadCompletion(
+                completedPartCount: Int32(resumedState.uploadedParts.count),
+                ossObjectETag: remoteETag
+            ),
+            onEvent: onEvent
         )
         await onEvent?(.completed(result))
         return result
@@ -1419,19 +1633,39 @@ public actor UploadCoordinator {
     ) async throws -> DataPlaneUploadCompletion {
         try await self.refreshUploadSessionIfNeeded(session: session, state: &state, onEvent: onEvent)
 
-        let body = try self.dependencies.fileCoordinator.readAll(from: state.managedFileURL)
-        await onEvent?(.uploadingPart(partNumber: 1, sentBytes: UInt64(body.count), totalBytes: state.fileSize))
-        await self.emitMetric("upload_part", dimensions: ["upload_id": state.uploadID, "part_number": "1"])
+        let bodySize = state.fileSize
+        let uploadID = state.uploadID
+        let totalBytes = state.fileSize
+        let upload = try await self.dependencies.fileCoordinator.accessPreparedFile(
+            fileURL: state.managedFileURL,
+            bookmarkData: state.fileURLBookmarkData
+        ) { accessibleFileURL in
+            let checksum = try self.dependencies.fileCoordinator.md5Checksum(
+                from: accessibleFileURL,
+                offset: 0,
+                length: bodySize
+            )
+            let body = OssUploadBody.file(
+                accessibleFileURL,
+                sizeBytes: try Self.int64Size(bodySize),
+                contentMD5Base64: checksum.base64
+            )
+            await onEvent?(.uploadingPart(partNumber: 1, sentBytes: bodySize, totalBytes: totalBytes))
+            await self.emitMetric("upload_part", dimensions: ["upload_id": uploadID, "part_number": "1"])
 
-        let descriptor = try await session.putObject(body: body)
+            let descriptor = try await session.putObject(body: body)
+            return (descriptor, checksum.hex)
+        }
+        let descriptor = upload.0
+        let md5Hex = upload.1
         state.multipartUploadID = nil
         state.uploadedParts = [
             PersistedUploadedPart(
                 partNumber: 1,
                 etag: descriptor.etag,
                 offsetStart: 0,
-                partSize: UInt64(body.count),
-                md5Hex: Self.md5Hex(body)
+                partSize: bodySize,
+                md5Hex: md5Hex
             ),
         ]
         state.phase = .multipartCompleted
@@ -1459,8 +1693,11 @@ public actor UploadCoordinator {
             try await self.dependencies.stateStore.saveActive(state)
         }
 
-        let partSize = Int(state.partSizeBytes)
-        let parts = try self.loadFileParts(from: state.managedFileURL, partSize: partSize)
+        let partSize = state.partSizeBytes
+        guard partSize > 0 else {
+            throw DataGatewayClientError.invalidConfiguration("partSizeBytes must be greater than 0")
+        }
+        let partCount = Int((state.fileSize + partSize - 1) / partSize)
         var persistedPartsByNumber = Dictionary(uniqueKeysWithValues: state.uploadedParts.map { ($0.partNumber, $0) })
         var uploadedDescriptors = state.uploadedParts
             .sorted(by: { $0.partNumber < $1.partNumber })
@@ -1474,28 +1711,53 @@ public actor UploadCoordinator {
                 )
             }
 
-        for (index, part) in parts.enumerated() {
+        for index in 0 ..< partCount {
             let partNumber = index + 1
             if persistedPartsByNumber[partNumber] != nil {
                 continue
             }
 
+            let offsetStart = UInt64(index) * partSize
+            let currentPartSize = min(partSize, state.fileSize - offsetStart)
             try await self.refreshUploadSessionIfNeeded(session: session, state: &state, onEvent: onEvent)
-            await onEvent?(.uploadingPart(partNumber: partNumber, sentBytes: UInt64(part.count), totalBytes: state.fileSize))
+            await onEvent?(.uploadingPart(partNumber: partNumber, sentBytes: currentPartSize, totalBytes: state.fileSize))
             await self.emitMetric("upload_part", dimensions: ["upload_id": state.uploadID, "part_number": String(partNumber)])
 
-            let descriptor = try await session.uploadPart(
-                multipartUploadID: multipartUploadID,
-                partNumber: partNumber,
-                body: part
-            )
+            let upload = try await self.dependencies.fileCoordinator.accessPreparedFile(
+                fileURL: state.managedFileURL,
+                bookmarkData: state.fileURLBookmarkData
+            ) { accessibleFileURL in
+                let checksum = try self.dependencies.fileCoordinator.md5Checksum(
+                    from: accessibleFileURL,
+                    offset: offsetStart,
+                    length: currentPartSize
+                )
+                let fileCoordinator = self.dependencies.fileCoordinator
+                let descriptor = try await session.uploadPart(
+                    multipartUploadID: multipartUploadID,
+                    partNumber: partNumber,
+                    body: .stream(
+                        sizeBytes: try Self.int64Size(currentPartSize),
+                        contentMD5Base64: checksum.base64
+                    ) {
+                        try fileCoordinator.inputStream(
+                            from: accessibleFileURL,
+                            offset: offsetStart,
+                            length: currentPartSize
+                        )
+                    }
+                )
+                return (descriptor, checksum.hex)
+            }
+            let descriptor = upload.0
+            let md5Hex = upload.1
             uploadedDescriptors.append(descriptor)
             persistedPartsByNumber[partNumber] = PersistedUploadedPart(
                 partNumber: partNumber,
                 etag: descriptor.etag,
-                offsetStart: UInt64(index * partSize),
-                partSize: UInt64(part.count),
-                md5Hex: Self.md5Hex(part)
+                offsetStart: offsetStart,
+                partSize: currentPartSize,
+                md5Hex: md5Hex
             )
             state.uploadedParts = persistedPartsByNumber.values.sorted(by: { $0.partNumber < $1.partNumber })
             state.phase = .uploading
@@ -1559,6 +1821,11 @@ public actor UploadCoordinator {
         uploadCompletion: DataPlaneUploadCompletion,
         onEvent: (@Sendable (UploadEvent) async -> Void)?
     ) async throws -> UploadResult {
+        try self.dependencies.fileCoordinator.validatePreparedFile(
+            managedFileURL: state.managedFileURL,
+            bookmarkData: state.fileURLBookmarkData,
+            expectedFingerprint: state.fileFingerprint
+        )
         await onEvent?(.completingBusinessUpload(uploadID: state.uploadID))
         _ = try await self.dependencies.gatewayClient.completeUpload(
             uploadID: state.uploadID,
@@ -1641,14 +1908,6 @@ public actor UploadCoordinator {
             return "[REDACTED]"
         }
         return message
-    }
-
-    private func loadFileParts(from fileURL: URL, partSize: Int) throws -> [Data] {
-        let data = try self.dependencies.fileCoordinator.readAll(from: fileURL)
-        return stride(from: 0, to: data.count, by: partSize).map { offset in
-            let end = min(offset + partSize, data.count)
-            return data.subdata(in: offset ..< end)
-        }
     }
 
     private static func makeDate(fromUnix unix: Int64) -> Date? {
@@ -1753,9 +2012,11 @@ public actor UploadCoordinator {
         return .continueUpload(merged.values.sorted(by: { $0.partNumber < $1.partNumber }))
     }
 
-    private static func md5Hex(_ data: Data) -> String {
-        let digest = Insecure.MD5.hash(data: data)
-        return digest.map { String(format: "%02X", $0) }.joined()
+    private static func int64Size(_ size: UInt64) throws -> Int64 {
+        guard size <= UInt64(Int64.max) else {
+            throw DataGatewayClientError.invalidLocalFile("local file size exceeds supported OSS request length")
+        }
+        return Int64(size)
     }
 }
 

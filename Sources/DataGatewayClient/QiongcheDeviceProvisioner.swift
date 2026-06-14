@@ -97,9 +97,14 @@ package struct DefaultQiongcheDeviceProvisioner: QiongcheDeviceProvisioning {
 
 private extension DataGatewayClientError {
     var isDeviceAlreadyInitialized: Bool {
-        guard case .gatewayFailed(_, let detailCode, _) = self else {
+        guard case .gatewayFailed(let statusCode, let detailCode, let message) = self else {
             return false
         }
-        return detailCode == DeviceInitGatewayDetailCode.alreadyInitialized
+        if detailCode == DeviceInitGatewayDetailCode.alreadyInitialized {
+            return true
+        }
+        return statusCode == 9
+            && message.localizedCaseInsensitiveContains("already")
+            && message.localizedCaseInsensitiveContains("initialized")
     }
 }

@@ -323,12 +323,12 @@ private actor FakeMultipartSession: UploadCoordinatorMultipartSessionProtocol {
 
     func initiateMultipartUpload() async throws -> String { "multipart-1" }
 
-    func uploadPart(multipartUploadID: String, partNumber: Int, body: Data) async throws -> UploadedPartDescriptor {
-        UploadedPartDescriptor(partNumber: partNumber, etag: "\"etag-\(partNumber)\"", size: Int64(body.count), lastModified: nil, hashCRC64: nil)
+    func uploadPart(multipartUploadID: String, partNumber: Int, body: OssUploadBody) async throws -> UploadedPartDescriptor {
+        UploadedPartDescriptor(partNumber: partNumber, etag: "\"etag-\(partNumber)\"", size: body.sizeBytes, lastModified: nil, hashCRC64: nil)
     }
 
-    func putObject(body: Data) async throws -> UploadedPartDescriptor {
-        UploadedPartDescriptor(partNumber: 1, etag: "\"etag-object\"", size: Int64(body.count), lastModified: nil, hashCRC64: nil)
+    func putObject(body: OssUploadBody) async throws -> UploadedPartDescriptor {
+        UploadedPartDescriptor(partNumber: 1, etag: "\"etag-object\"", size: body.sizeBytes, lastModified: nil, hashCRC64: nil)
     }
 
     func listParts(multipartUploadID: String) async throws -> [UploadedPartDescriptor] { [] }
