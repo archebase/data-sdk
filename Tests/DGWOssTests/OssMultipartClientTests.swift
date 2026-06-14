@@ -36,11 +36,11 @@ import Testing
         objectKey: "objects/demo.bin",
         multipartUploadID: "upload-1",
         partNumber: 7,
-        body: Data("abc".utf8)
+        body: .data(Data("abc".utf8))
     )
     _ = try await client.putObject(
         objectKey: "objects/demo.bin",
-        body: Data("put".utf8)
+        body: .data(Data("put".utf8))
     )
     _ = try await client.completeMultipartUpload(
         objectKey: "objects/demo.bin",
@@ -131,7 +131,7 @@ import Testing
         objectKey: "objects/demo.bin",
         multipartUploadID: "upload-1",
         partNumber: 2,
-        body: Data("abcd".utf8)
+        body: .data(Data("abcd".utf8))
     )
     #expect(uploadedPart == UploadedPartDescriptor(
         partNumber: 2,
@@ -143,7 +143,7 @@ import Testing
 
     let putObject = try await client.putObject(
         objectKey: "objects/demo.bin",
-        body: Data("put-body".utf8)
+        body: .data(Data("put-body".utf8))
     )
     #expect(putObject == UploadedPartDescriptor(
         partNumber: 1,
@@ -173,6 +173,42 @@ import Testing
 
     let headETag = try await client.headObjectETag(objectKey: "objects/demo.bin")
     #expect(headETag == "\"etag-head\"")
+}
+
+@Test func ossMultipartClientAddsContentMD5ForExplicitIntegrityBodies() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("oss-md5-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let fileURL = root.appendingPathComponent("body.bin")
+    try Data("put-body".utf8).write(to: fileURL)
+    let sdkClient = MockAlibabaOSSSDKClient(
+        initiateValue: OssInitiateMultipartUploadOutput(uploadID: "upload-1"),
+        uploadPartValue: OssUploadPartOutput(etag: "\"etag-1\""),
+        completeValue: OssCompleteMultipartUploadOutput(etag: "\"etag-complete\""),
+        listValues: [],
+        headValue: OssHeadObjectOutput(etag: "\"etag-head\"")
+    )
+    let client = try OssMultipartClient(configuration: makeConfiguration(), sdkClient: sdkClient)
+
+    _ = try await client.uploadPart(
+        objectKey: "objects/demo.bin",
+        multipartUploadID: "upload-1",
+        partNumber: 1,
+        body: .stream(sizeBytes: 3, contentMD5Base64: "part-md5-base64") {
+            InputStream(data: Data("abc".utf8))
+        }
+    )
+    _ = try await client.putObject(
+        objectKey: "objects/demo.bin",
+        body: .file(fileURL, sizeBytes: 8, contentMD5Base64: "put-md5-base64")
+    )
+
+    let uploadRequests = await sdkClient.uploadPartRequests()
+    #expect(uploadRequests[0].commonProp.headers?["content-md5"] == "part-md5-base64")
+    #expect(uploadRequests[0].commonProp.headers?["content-length"] == "3")
+
+    let putRequests = await sdkClient.putRequests()
+    #expect(putRequests[0].commonProp.headers?["content-md5"] == "put-md5-base64")
+    #expect(putRequests[0].commonProp.headers?["content-length"] == "8")
 }
 
 @Test func listPartsMergesPaginatorPagesInOrder() async throws {
@@ -214,7 +250,7 @@ import Testing
     let client = try OssMultipartClient(configuration: makeConfiguration(), sdkClient: sdkClient)
 
     let error = await #expect(throws: OssOperationError.self) {
-        try await client.putObject(objectKey: "objects/demo.bin", body: Data("body".utf8))
+        try await client.putObject(objectKey: "objects/demo.bin", body: .data(Data("body".utf8)))
     }
 
     #expect(error == .invalidResponse("PutObject response missing ETag"))
@@ -232,7 +268,7 @@ import Testing
     let client = try OssMultipartClient(configuration: makeConfiguration(), sdkClient: sdkClient)
 
     let error = await #expect(throws: OssOperationError.self) {
-        try await client.putObject(objectKey: "objects/demo.bin", body: Data("body".utf8))
+        try await client.putObject(objectKey: "objects/demo.bin", body: .data(Data("body".utf8)))
     }
 
     #expect(error == .transportFailure(code: URLError.Code.timedOut.rawValue, message: URLError(.timedOut).localizedDescription))
@@ -280,7 +316,7 @@ import Testing
     let uploadedPart = try await session.uploadPart(
         multipartUploadID: "multipart-1",
         partNumber: 1,
-        body: Data("abc".utf8)
+        body: .data(Data("abc".utf8))
     )
 
     #expect(uploadedPart.etag == "\"etag-refreshed\"")
@@ -346,9 +382,9 @@ import Testing
     let uploadedPart = try await session.uploadPart(
         multipartUploadID: "multipart-1",
         partNumber: 2,
-        body: Data("data".utf8)
+        body: .data(Data("data".utf8))
     )
-    let putObject = try await session.putObject(body: Data("blob".utf8))
+    let putObject = try await session.putObject(body: .data(Data("blob".utf8)))
     let completeETag = try await session.completeMultipartUpload(
         multipartUploadID: "multipart-1",
         parts: [uploadedPart]
@@ -680,13 +716,13 @@ private actor RecordingMultipartClient: OssMultipartClientProtocol {
         objectKey: String,
         multipartUploadID: String,
         partNumber: Int,
-        body: Data
+        body: OssUploadBody
     ) async throws -> UploadedPartDescriptor {
         self.recordedUploadPartCalls.append("\(multipartUploadID):\(partNumber)")
         return UploadedPartDescriptor(
             partNumber: partNumber,
             etag: self.uploadPartResult.etag,
-            size: Int64(body.count),
+            size: body.sizeBytes,
             lastModified: self.uploadPartResult.lastModified,
             hashCRC64: self.uploadPartResult.hashCRC64
         )
@@ -694,13 +730,13 @@ private actor RecordingMultipartClient: OssMultipartClientProtocol {
 
     func putObject(
         objectKey: String,
-        body: Data
+        body: OssUploadBody
     ) async throws -> UploadedPartDescriptor {
-        self.recordedPutObjectCalls.append("\(objectKey):\(body.count)")
+        self.recordedPutObjectCalls.append("\(objectKey):\(body.sizeBytes)")
         return UploadedPartDescriptor(
             partNumber: 1,
             etag: self.putObjectResult.etag,
-            size: Int64(body.count),
+            size: body.sizeBytes,
             lastModified: self.putObjectResult.lastModified,
             hashCRC64: self.putObjectResult.hashCRC64
         )
@@ -764,14 +800,14 @@ private actor ThrowingMultipartClient: OssMultipartClientProtocol {
         objectKey: String,
         multipartUploadID: String,
         partNumber: Int,
-        body: Data
+        body: OssUploadBody
     ) async throws -> UploadedPartDescriptor {
         throw self.error
     }
 
     func putObject(
         objectKey: String,
-        body: Data
+        body: OssUploadBody
     ) async throws -> UploadedPartDescriptor {
         throw self.error
     }

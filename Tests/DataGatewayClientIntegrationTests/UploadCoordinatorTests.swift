@@ -1,3 +1,4 @@
+@preconcurrency import AlibabaCloudOSS
 import DGWOss
 import DGWControlPlane
 import DGWProto
@@ -14,7 +15,7 @@ import Testing
     #expect(!persistence.keepCompletedSnapshot)
     #expect(persistence.completedSnapshotTTL == .seconds(0))
     #expect(persistence.terminalSnapshotTTL == .seconds(3600))
-    #expect(persistence.copyExternalFileIntoManagedStaging)
+    #expect(!persistence.copyExternalFileIntoManagedStaging)
 
     let execution = UploadExecutionPolicy.recommended
     #expect(execution.maxRestartCount == 3)
@@ -125,7 +126,10 @@ import Testing
     )
 
     let logs = await logRecorder.events()
-    #expect(logs.contains(where: { $0.operation == "refresh_credentials" && $0.message == "[REDACTED]" }))
+    let containsRedactedCredentialLog = logs.contains {
+        $0.operation == "refresh_credentials" && $0.message == "[REDACTED]"
+    }
+    #expect(containsRedactedCredentialLog)
 
     let metrics = await metricRecorder.events()
     let recordedUploadPartMetric = metrics.contains { event in
@@ -313,6 +317,7 @@ import Testing
     ])
     #expect(await ossSession.initiateCalls() == 0)
     #expect(await ossSession.putObjectCalls() == [payload.count])
+    #expect(await ossSession.putObjectKinds() == [.file])
     #expect(await ossSession.uploadCalls().isEmpty)
 }
 
@@ -454,6 +459,7 @@ import Testing
     #expect(await ossSession.initiateCalls() == 0)
     #expect(await ossSession.uploadCalls().isEmpty)
     #expect(await ossSession.putObjectCalls() == [payload.count])
+    #expect(await ossSession.putObjectKinds() == [.file])
     #expect(await ossSession.completeCalls().isEmpty)
 
     let pending = try await stateStore.listPendingUploads()
@@ -523,7 +529,52 @@ import Testing
     #expect(result.ossObjectETag == "\"etag-small-object\"")
     #expect(await ossSession.initiateCalls() == 0)
     #expect(await ossSession.putObjectCalls() == [payload.count])
+    #expect(await ossSession.putObjectKinds() == [.file])
     #expect(await ossSession.uploadCalls().isEmpty)
+}
+
+@Test func singleObjectUploadReadsOriginalFileBodyDirectly() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("single-object-direct-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let sourceURL = root.appendingPathComponent("demo-small.bin")
+    let payload = Data("small-direct-file".utf8)
+    try payload.write(to: sourceURL)
+    let fileCoordinator = FileStagingCoordinator(stagingRoot: root.appendingPathComponent("staging", isDirectory: true))
+    let stateStore = UploadStateStore(
+        persistRoot: root.appendingPathComponent("state", isDirectory: true),
+        fileManager: .default,
+        clock: FixedUploadCoordinatorStoreClock(now: Date(timeIntervalSince1970: 705))
+    )
+    let gatewayClient = MockUploadCoordinatorGatewayClient(
+        createResponse: makeCreateLogicalUploadResponse(uploadID: "upload-small-direct", objectKey: "objects/small-direct.bin", partSizeBytes: 1024),
+        recoveryResponse: makeContinueRecoveryResponse(currentUploadID: "upload-small-direct"),
+        reissueResponse: makeReissueResponse(uploadID: "upload-small-direct", credentials: makeCoordinatorUploadCredentials(expireAtUnix: 5_000, tokenSuffix: "fresh", objectKey: "objects/small-direct.bin", partSizeBytes: 1024)),
+        completeResponse: Archebase_DataGateway_V1_CompleteUploadResponse()
+    )
+    let ossSession = MockOssUploadSession(
+        multipartUploadID: "multipart-small-direct",
+        uploadedParts: [],
+        completedETag: "\"etag-small-direct-object\""
+    )
+    let client = DataGatewayClient(
+        uploadCoordinator: UploadCoordinator(
+            executionPolicy: makeExecutionPolicy(),
+            dependencies: UploadCoordinatorDependencies(
+                gatewayClient: gatewayClient,
+                stateStore: stateStore,
+                fileCoordinator: fileCoordinator,
+                ossClientFactory: { _ in ossSession },
+                clock: FixedUploadCoordinatorClock(now: Date(timeIntervalSince1970: 705))
+            )
+        )
+    )
+
+    _ = try await client.upload(
+        UploadRequest(fileURL: sourceURL, clientHints: ["kind": "small"], rawTags: ["scene": "robot"], displayName: "small")
+    )
+
+    #expect(await ossSession.putObjectKinds() == [.file])
+    #expect(await ossSession.putObjectBytes() == [payload])
 }
 
 @Test func dataGatewayClientUploadHandlesMultipartFiles() async throws {
@@ -532,10 +583,11 @@ import Testing
     let fileSystem = MemoryFileSystem(files: [
         sourceURL: .file(size: UInt64(payload.count), modifiedAt: Date(timeIntervalSince1970: 140), data: payload),
     ])
+    let securityAccessor = RecordingSecurityScopedAccessor()
     let fileCoordinator = FileStagingCoordinator(
         stagingRoot: URL(fileURLWithPath: "/staging"),
         fileSystem: fileSystem,
-        securityScopedAccessor: PassthroughSecurityScopedAccessor()
+        securityScopedAccessor: securityAccessor
     )
     let stateStore = UploadStateStore(
         persistRoot: FileManager.default.temporaryDirectory.appendingPathComponent("data-gateway-client-e2-multipart-\(UUID().uuidString)"),
@@ -582,6 +634,13 @@ import Testing
         UploadCall(multipartUploadID: "multipart-24", partNumber: 2, size: 8),
         UploadCall(multipartUploadID: "multipart-24", partNumber: 3, size: 8),
     ])
+    #expect(await ossSession.uploadedBodyBytes() == [
+        Data(payload[0 ..< 8]),
+        Data(payload[8 ..< 16]),
+        Data(payload[16 ..< 24]),
+    ])
+    let bookmark = Data("bookmark:/files/demo-multipart.bin".utf8)
+    #expect(securityAccessor.accessRecords().filter { $0.bookmarkData == bookmark }.count >= 4)
     #expect(await ossSession.completeCalls() == [[1, 2, 3]])
     #expect(await gatewayClient.completeInvocations() == [
         CompleteInvocation(
@@ -765,7 +824,7 @@ import Testing
         try await client.resumeUpload(logicalUploadID: "logical-resume")
     }
 
-    #expect(error == .resumeNotPossible("managed file missing: /missing/demo.bin"))
+    #expect(error == .resumeNotPossible("source file missing: /missing/demo.bin"))
 }
 
 @Test func resumeUploadFailsWhenFingerprintChanges() async throws {
@@ -2381,6 +2440,7 @@ private actor RefreshAwareMockOssSession: UploadCoordinatorMultipartSessionProto
     private var refreshChecks = 0
     private var refreshIndex = 0
     private var putObjectInvocations: [Int] = []
+    private var putObjectBodyKinds: [OssUploadBody.Kind] = []
 
     init(
         multipartUploadID: String,
@@ -2426,7 +2486,7 @@ private actor RefreshAwareMockOssSession: UploadCoordinatorMultipartSessionProto
     func uploadPart(
         multipartUploadID: String,
         partNumber: Int,
-        body: Data
+        body: OssUploadBody
     ) async throws -> UploadedPartDescriptor {
         _ = multipartUploadID
         _ = body
@@ -2436,12 +2496,13 @@ private actor RefreshAwareMockOssSession: UploadCoordinatorMultipartSessionProto
         return descriptor
     }
 
-    func putObject(body: Data) async throws -> UploadedPartDescriptor {
-        self.putObjectInvocations.append(body.count)
+    func putObject(body: OssUploadBody) async throws -> UploadedPartDescriptor {
+        self.putObjectInvocations.append(Int(body.sizeBytes))
+        self.putObjectBodyKinds.append(body.kind)
         return UploadedPartDescriptor(
             partNumber: 1,
             etag: self.completedETag,
-            size: Int64(body.count),
+            size: body.sizeBytes,
             lastModified: nil,
             hashCRC64: nil
         )
@@ -2472,6 +2533,10 @@ private actor RefreshAwareMockOssSession: UploadCoordinatorMultipartSessionProto
     func putObjectCalls() -> [Int] {
         self.putObjectInvocations
     }
+
+    func putObjectKinds() -> [OssUploadBody.Kind] {
+        self.putObjectBodyKinds
+    }
 }
 
 private actor MockOssUploadSession: UploadCoordinatorMultipartSessionProtocol {
@@ -2485,7 +2550,10 @@ private actor MockOssUploadSession: UploadCoordinatorMultipartSessionProtocol {
     private let headObjectError: DataGatewayClientError?
     private var initiateInvocations = 0
     private var uploadInvocations: [UploadCall] = []
+    private var uploadBodyBytes: [Data] = []
     private var putObjectInvocations: [Int] = []
+    private var putObjectBodyKinds: [OssUploadBody.Kind] = []
+    private var putObjectBodyBytes: [Data] = []
     private var completeInvocations: [[Int]] = []
 
     init(
@@ -2524,24 +2592,38 @@ private actor MockOssUploadSession: UploadCoordinatorMultipartSessionProtocol {
     func uploadPart(
         multipartUploadID: String,
         partNumber: Int,
-        body: Data
+        body: OssUploadBody
     ) async throws -> UploadedPartDescriptor {
-        self.uploadInvocations.append(UploadCall(multipartUploadID: multipartUploadID, partNumber: partNumber, size: body.count))
+        if let bodyBytes = try readUploadBodyBytes(body) {
+            self.uploadBodyBytes.append(bodyBytes)
+        }
+        self.uploadInvocations.append(
+            UploadCall(
+                multipartUploadID: multipartUploadID,
+                partNumber: partNumber,
+                size: Int(body.sizeBytes),
+                bodyKind: body.kind
+            )
+        )
         guard let descriptor = self.uploadedParts.first(where: { $0.partNumber == partNumber }) else {
             fatalError("missing uploaded part fixture for partNumber=\(partNumber)")
         }
         return descriptor
     }
 
-    func putObject(body: Data) async throws -> UploadedPartDescriptor {
-        self.putObjectInvocations.append(body.count)
+    func putObject(body: OssUploadBody) async throws -> UploadedPartDescriptor {
+        self.putObjectInvocations.append(Int(body.sizeBytes))
+        self.putObjectBodyKinds.append(body.kind)
+        if let bodyBytes = try readUploadBodyBytes(body) {
+            self.putObjectBodyBytes.append(bodyBytes)
+        }
         if let failOnPutObject {
             throw failOnPutObject
         }
         return UploadedPartDescriptor(
             partNumber: 1,
             etag: self.completedETag,
-            size: Int64(body.count),
+            size: body.sizeBytes,
             lastModified: nil,
             hashCRC64: nil
         )
@@ -2579,8 +2661,20 @@ private actor MockOssUploadSession: UploadCoordinatorMultipartSessionProtocol {
         self.uploadInvocations
     }
 
+    func uploadedBodyBytes() -> [Data] {
+        self.uploadBodyBytes
+    }
+
     func putObjectCalls() -> [Int] {
         self.putObjectInvocations
+    }
+
+    func putObjectKinds() -> [OssUploadBody.Kind] {
+        self.putObjectBodyKinds
+    }
+
+    func putObjectBytes() -> [Data] {
+        self.putObjectBodyBytes
     }
 
     func completeCalls() -> [[Int]] {
@@ -2613,6 +2707,54 @@ private struct UploadCall: Equatable, Sendable {
     let multipartUploadID: String
     let partNumber: Int
     let size: Int
+    let bodyKind: OssUploadBody.Kind
+
+    init(
+        multipartUploadID: String,
+        partNumber: Int,
+        size: Int,
+        bodyKind: OssUploadBody.Kind = .stream
+    ) {
+        self.multipartUploadID = multipartUploadID
+        self.partNumber = partNumber
+        self.size = size
+        self.bodyKind = bodyKind
+    }
+}
+
+private func readUploadBodyBytes(_ body: OssUploadBody) throws -> Data? {
+    switch try body.byteStream() {
+    case .none:
+        return nil
+    case .data(let data):
+        return data
+    case .file(let fileURL):
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            return nil
+        }
+        return try Data(contentsOf: fileURL)
+    case .stream(let stream):
+        return try readInputStreamBytes(stream)
+    }
+}
+
+private func readInputStreamBytes(_ stream: InputStream) throws -> Data {
+    var output = Data()
+    var buffer = [UInt8](repeating: 0, count: 4096)
+
+    stream.open()
+    defer { stream.close() }
+
+    while true {
+        let count = stream.read(&buffer, maxLength: buffer.count)
+        if count > 0 {
+            output.append(buffer, count: count)
+        } else if count == 0 {
+            return output
+        } else {
+            throw stream.streamError ?? CocoaError(.fileReadUnknown)
+        }
+    }
 }
 
 private struct FixedUploadCoordinatorClock: UploadCoordinatorClock {

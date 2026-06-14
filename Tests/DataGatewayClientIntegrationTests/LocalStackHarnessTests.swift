@@ -571,6 +571,7 @@ struct LocalStackHarnessTests {
     #expect(result.bucket == expectation.bucket)
     #expect(result.objectKey.hasPrefix(expectation.objectPrefix))
     #expect(!result.ossObjectETag.isEmpty)
+    try assertNoStagingDataCopies(under: clientConfig.persistRootURL)
 
     let pending = try await client.listPendingUploads()
     #expect(!pending.contains(where: { $0.logicalUploadID == result.logicalUploadID }))
@@ -645,6 +646,7 @@ struct LocalStackHarnessTests {
     #expect(result.bucket == expectation.bucket)
     #expect(result.objectKey.hasPrefix(expectation.objectPrefix))
     #expect(!result.ossObjectETag.isEmpty)
+    try assertNoStagingDataCopies(under: clientConfig.persistRootURL)
 }
 
 @Test(
@@ -677,6 +679,7 @@ struct LocalStackHarnessTests {
     #expect(result.bucket == expectation.bucket)
     #expect(result.objectKey.hasPrefix(expectation.objectPrefix))
     #expect(!result.ossObjectETag.isEmpty)
+    try assertNoStagingDataCopies(under: clientConfig.persistRootURL)
 }
 
 @Test(
@@ -712,6 +715,7 @@ struct LocalStackHarnessTests {
     #expect(result.bucket == expectation.bucket)
     #expect(result.objectKey.hasPrefix(expectation.objectPrefix))
     #expect(!result.ossObjectETag.isEmpty)
+    try assertNoStagingDataCopies(under: clientConfig.persistRootURL)
 }
 
 @Test(
@@ -761,6 +765,7 @@ struct LocalStackHarnessTests {
     #expect(result.bucket == expectation.bucket)
     #expect(result.objectKey.hasPrefix(expectation.objectPrefix))
     #expect(!result.ossObjectETag.isEmpty)
+    try assertNoStagingDataCopies(under: clientConfig.persistRootURL)
 }
 
 @Test(
@@ -790,6 +795,7 @@ struct LocalStackHarnessTests {
     #expect(result.bucket == expectation.bucket)
     #expect(result.objectKey.hasPrefix(expectation.objectPrefix))
     #expect(!result.ossObjectETag.isEmpty)
+    try assertNoStagingDataCopies(under: clientConfig.persistRootURL)
     let pendingAfterResume = try await client.listPendingUploads()
     #expect(!pendingAfterResume.contains(where: { $0.logicalUploadID == state.logicalUploadID }))
 }
@@ -840,42 +846,33 @@ struct LocalStackHarnessTests {
     let clientConfig = try uniqueRealClientConfig(from: environment.makeRemoteClientConfig(), label: "device-init")
     defer { try? FileManager.default.removeItem(at: clientConfig.persistRootURL) }
     let deviceID = try requiredValueFromEnvironment("DGW_REAL_DEVICE_ID")
-    let configURL = clientConfig.persistRootURL.appendingPathComponent("archebase-config.json")
-    let initializer: ArchebaseDeviceInitializer
-    if publicDNSIntegrationEnabled {
-        let endpointsURL = clientConfig.persistRootURL.appendingPathComponent(ArchebasePublicEndpoints.endpointsFileName)
-        initializer = try ArchebaseDeviceInitializer(
-            config: DeviceInitClientConfig(configURL: configURL, endpointsURL: endpointsURL)
-        )
-    } else {
-        let initEndpoint = try requiredURLFromEnvironment("DGW_REAL_INIT_ENDPOINT")
-        let initTLS: TLSMode = initEndpoint.scheme?.lowercased() == "https" ? .tls : .plaintext
-        initializer = try ArchebaseDeviceInitializer(
-            config: DeviceInitClientConfig(configURL: configURL, tls: initTLS),
-            initEndpoint: initEndpoint,
-            sdkVersion: "aliyun-e2e",
-            platform: "ios-simulator"
-        )
-    }
+    let paths = try QiongcheSDKPaths(rootURL: clientConfig.persistRootURL)
+    let configString = try realQiongcheConfigString(deviceID: deviceID, clientConfig: clientConfig)
+    let qiongcheSDK = try QiongcheDataGatewaySDK(
+        rootURL: clientConfig.persistRootURL,
+        deviceInitTimeout: clientConfig.requestTimeout,
+        readinessTimeout: clientConfig.requestTimeout
+    )
 
-    let initializedConfig = try await initializer.initDevice(deviceID: deviceID)
+    try await qiongcheSDK.saveConfigAndInit(configString: configString)
+    let initializedConfig = try await ArchebaseConfigStore(configURL: paths.configURL).load()
     #expect(!initializedConfig.apiKey.isEmpty)
-    #expect(try await ArchebaseConfigStore(configURL: configURL).load() == initializedConfig)
+    #expect(try QiongcheSDKStateStore(stateURL: paths.stateURL).load().deviceID == deviceID)
 
-    let reinitializedConfig = try await initializer.reinitDevice(deviceID: deviceID)
+    try await qiongcheSDK.saveConfigAndInit(configString: configString)
+    let reinitializedConfig = try await ArchebaseConfigStore(configURL: paths.configURL).load()
     #expect(!reinitializedConfig.apiKey.isEmpty)
-    #expect(try await ArchebaseConfigStore(configURL: configURL).load() == reinitializedConfig)
+    #expect(try QiongcheSDKStateStore(stateURL: paths.stateURL).load().deviceID == deviceID)
+    #expect(await qiongcheSDK.isReadyToUpload())
 
-    let client = try await DataGatewayClient.testFromArchebaseConfig(
-        authEndpoint: clientConfig.authEndpoint,
-        gatewayEndpoint: clientConfig.gatewayEndpoint,
-        configURL: configURL,
-        persistRootURL: clientConfig.persistRootURL,
-        tls: clientConfig.tls
+    let client = try await DataGatewayClient.fromArchebaseConfig(
+        configURL: paths.configURL,
+        persistRootURL: paths.persistRootURL,
+        endpointsURL: paths.endpointsURL
     )
     let fileURL = try writeRealPayload(
         Data("aliyun-real-device-init-payload-\(UUID().uuidString)".utf8),
-        under: clientConfig.persistRootURL,
+        under: paths.persistRootURL,
         name: "aliyun-real-device-init"
     )
     let result = try await client.upload(
@@ -885,6 +882,7 @@ struct LocalStackHarnessTests {
     #expect(result.bucket == expectation.bucket)
     #expect(result.objectKey.hasPrefix(expectation.objectPrefix))
     #expect(!result.ossObjectETag.isEmpty)
+    try assertNoStagingDataCopies(under: paths.persistRootURL)
 }
 
 }
@@ -924,6 +922,59 @@ private func writeRealPayload(_ payload: Data, under root: URL, name: String) th
         .appendingPathExtension("bin")
     try payload.write(to: fileURL)
     return fileURL
+}
+
+private func assertNoStagingDataCopies(under persistRoot: URL) throws {
+    let stagingRoot = persistRoot
+        .appendingPathComponent("data-gateway-client", isDirectory: true)
+        .appendingPathComponent("staging", isDirectory: true)
+    guard FileManager.default.fileExists(atPath: stagingRoot.path) else {
+        return
+    }
+
+    let stagedItems = try FileManager.default.contentsOfDirectory(
+        at: stagingRoot,
+        includingPropertiesForKeys: nil
+    )
+    #expect(stagedItems.isEmpty)
+}
+
+private func realQiongcheConfigString(
+    deviceID: String,
+    clientConfig: DataGatewayClientConfig
+) throws -> String {
+    let object: [String: Any] = [
+        "device_id": deviceID,
+        "auth": try endpointJSONObject(clientConfig.authEndpoint),
+        "gateway": try endpointJSONObject(clientConfig.gatewayEndpoint),
+        "deviceInit": try endpointJSONObject(realDeviceInitEndpoint(clientConfig: clientConfig)),
+    ]
+    let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+    guard let string = String(data: data, encoding: .utf8) else {
+        throw DataGatewayClientError.invalidConfiguration("failed to encode real qiongche config")
+    }
+    return string
+}
+
+private func endpointJSONObject(_ endpoint: URL) throws -> [String: Any] {
+    guard let scheme = endpoint.scheme?.lowercased(), !scheme.isEmpty else {
+        throw LocalStackHarnessError.invalidEndpoint(endpoint.absoluteString)
+    }
+    guard let host = endpoint.host(percentEncoded: false) ?? endpoint.host, !host.isEmpty else {
+        throw LocalStackHarnessError.invalidEndpoint(endpoint.absoluteString)
+    }
+    let port = endpoint.port ?? (scheme == "https" ? 443 : 80)
+    return ["scheme": scheme, "host": host, "port": port]
+}
+
+private func realDeviceInitEndpoint(clientConfig: DataGatewayClientConfig) throws -> URL {
+    if let endpoint = try optionalURLFromEnvironment("DGW_REAL_INIT_ENDPOINT") {
+        return endpoint
+    }
+    if let endpoint = try optionalURLFromEnvironment("DGW_REAL_DEVICE_INIT_ENDPOINT") {
+        return endpoint
+    }
+    return clientConfig.gatewayEndpoint
 }
 
 private func canonicalObjectETag(_ value: String) -> String {
@@ -1137,6 +1188,17 @@ private func requiredValueFromEnvironment(_ key: String) throws -> String {
 
 private func requiredURLFromEnvironment(_ key: String) throws -> URL {
     let value = try requiredValueFromEnvironment(key)
+    guard let url = normalizedURLFromEnvironmentValue(value) else {
+        throw LocalStackHarnessError.invalidEndpoint(key)
+    }
+    return url
+}
+
+private func optionalURLFromEnvironment(_ key: String) throws -> URL? {
+    guard let value = ProcessInfo.processInfo.environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !value.isEmpty else {
+        return nil
+    }
     guard let url = normalizedURLFromEnvironmentValue(value) else {
         throw LocalStackHarnessError.invalidEndpoint(key)
     }

@@ -221,6 +221,81 @@ package struct OssPutObjectOutput: Sendable, Equatable {
     }
 }
 
+package struct OssUploadBody: @unchecked Sendable {
+    package enum Kind: Sendable, Equatable {
+        case data
+        case file
+        case stream
+    }
+
+    fileprivate enum Storage {
+        case data(Data)
+        case file(URL, sizeBytes: Int64)
+        case stream(@Sendable () throws -> InputStream, sizeBytes: Int64)
+    }
+
+    fileprivate let storage: Storage
+    fileprivate let contentMD5Base64: String?
+
+    package var sizeBytes: Int64 {
+        switch self.storage {
+        case .data(let data):
+            return Int64(data.count)
+        case .file(_, let sizeBytes), .stream(_, let sizeBytes):
+            return sizeBytes
+        }
+    }
+
+    package var kind: Kind {
+        switch self.storage {
+        case .data:
+            return .data
+        case .file:
+            return .file
+        case .stream:
+            return .stream
+        }
+    }
+
+    package static func data(_ data: Data) -> OssUploadBody {
+        OssUploadBody(storage: .data(data), contentMD5Base64: nil)
+    }
+
+    package static func file(
+        _ fileURL: URL,
+        sizeBytes: Int64,
+        contentMD5Base64: String? = nil
+    ) -> OssUploadBody {
+        OssUploadBody(storage: .file(fileURL, sizeBytes: sizeBytes), contentMD5Base64: contentMD5Base64)
+    }
+
+    package static func stream(
+        sizeBytes: Int64,
+        contentMD5Base64: String? = nil,
+        makeStream: @escaping @Sendable () throws -> InputStream
+    ) -> OssUploadBody {
+        OssUploadBody(storage: .stream(makeStream, sizeBytes: sizeBytes), contentMD5Base64: contentMD5Base64)
+    }
+
+    package func byteStream() throws -> ByteStream {
+        switch self.storage {
+        case .data(let data):
+            return .data(data)
+        case .file(let fileURL, _):
+            return .file(fileURL)
+        case .stream(let makeStream, _):
+            return try .stream(makeStream())
+        }
+    }
+
+    fileprivate func addIntegrityHeaders(to request: inout some RequestModel) {
+        guard let contentMD5Base64 else {
+            return
+        }
+        request.addHeader("Content-MD5", contentMD5Base64)
+    }
+}
+
 package struct OssCompleteMultipartUploadOutput: Sendable, Equatable {
     package let etag: String?
 
@@ -724,12 +799,12 @@ package protocol OssMultipartClientProtocol: Sendable {
         objectKey: String,
         multipartUploadID: String,
         partNumber: Int,
-        body: Data
+        body: OssUploadBody
     ) async throws -> UploadedPartDescriptor
 
     func putObject(
         objectKey: String,
-        body: Data
+        body: OssUploadBody
     ) async throws -> UploadedPartDescriptor
 
     func completeMultipartUpload(
@@ -784,16 +859,18 @@ package struct OssMultipartClient: OssMultipartClientProtocol {
         objectKey: String,
         multipartUploadID: String,
         partNumber: Int,
-        body: Data
+        body: OssUploadBody
     ) async throws -> UploadedPartDescriptor {
         do {
-            let request = UploadPartRequest(
+            var request = UploadPartRequest(
                 bucket: self.configuration.bucket,
                 key: objectKey,
                 partNumber: partNumber,
                 uploadId: multipartUploadID,
-                body: .data(body)
+                body: try body.byteStream()
             )
+            request.addHeader("Content-Length", body.sizeBytes.description)
+            body.addIntegrityHeaders(to: &request)
             let result = try await self.sdkClient.uploadPart(request)
             guard let etag = result.etag?.nilIfBlank else {
                 throw OssOperationError.invalidResponse("UploadPart response missing ETag")
@@ -801,7 +878,7 @@ package struct OssMultipartClient: OssMultipartClientProtocol {
             return UploadedPartDescriptor(
                 partNumber: partNumber,
                 etag: etag,
-                size: Int64(body.count),
+                size: body.sizeBytes,
                 lastModified: nil,
                 hashCRC64: nil
             )
@@ -812,14 +889,16 @@ package struct OssMultipartClient: OssMultipartClientProtocol {
 
     package func putObject(
         objectKey: String,
-        body: Data
+        body: OssUploadBody
     ) async throws -> UploadedPartDescriptor {
         do {
-            let request = PutObjectRequest(
+            var request = PutObjectRequest(
                 bucket: self.configuration.bucket,
                 key: objectKey,
-                body: .data(body)
+                body: try body.byteStream()
             )
+            request.addHeader("Content-Length", body.sizeBytes.description)
+            body.addIntegrityHeaders(to: &request)
             let result = try await self.sdkClient.putObject(request)
             guard let etag = result.etag?.nilIfBlank else {
                 throw OssOperationError.invalidResponse("PutObject response missing ETag")
@@ -827,7 +906,7 @@ package struct OssMultipartClient: OssMultipartClientProtocol {
             return UploadedPartDescriptor(
                 partNumber: 1,
                 etag: etag,
-                size: Int64(body.count),
+                size: body.sizeBytes,
                 lastModified: nil,
                 hashCRC64: nil
             )
@@ -1066,7 +1145,7 @@ package actor OssUploadSession {
     package func uploadPart(
         multipartUploadID: String,
         partNumber: Int,
-        body: Data
+        body: OssUploadBody
     ) async throws -> UploadedPartDescriptor {
         try await self.executeDataPlaneOperation {
             try await self.performUploadPart(
@@ -1077,7 +1156,7 @@ package actor OssUploadSession {
         }
     }
 
-    package func putObject(body: Data) async throws -> UploadedPartDescriptor {
+    package func putObject(body: OssUploadBody) async throws -> UploadedPartDescriptor {
         try await self.executeDataPlaneOperation {
             try await self.performPutObject(body: body)
         }
@@ -1150,7 +1229,7 @@ package actor OssUploadSession {
     private func performUploadPart(
         multipartUploadID: String,
         partNumber: Int,
-        body: Data
+        body: OssUploadBody
     ) async throws -> UploadedPartDescriptor {
         try await self.client.uploadPart(
             objectKey: self.context.objectKey,
@@ -1160,7 +1239,7 @@ package actor OssUploadSession {
         )
     }
 
-    private func performPutObject(body: Data) async throws -> UploadedPartDescriptor {
+    private func performPutObject(body: OssUploadBody) async throws -> UploadedPartDescriptor {
         try await self.client.putObject(
             objectKey: self.context.objectKey,
             body: body

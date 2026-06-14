@@ -171,6 +171,36 @@ import Testing
     #expect(state.initializedAtUnix == 1_778_840_000)
 }
 
+@Test func qiongcheSaveConfigAndInitFallsBackToReinitWhenAlreadyInitializedDetailIsMissing() async throws {
+    let root = try qiongcheTemporaryRoot()
+    let paths = try QiongcheSDKPaths(rootURL: root)
+    let reinitResponse = deviceInitResponse(apiKey: "credential-v3", tags: ["device": "robot-reinit-message"])
+    let transport = SequencedDeviceInitTransport(outcomes: [
+        .failure(.gatewayFailed(
+            statusCode: 9,
+            detailCode: nil,
+            message: "device has already been initialized; use explicit reinit"
+        )),
+        .success(reinitResponse),
+    ])
+    let provisioner = DefaultQiongcheDeviceProvisioner(makeTransport: { _, _, _ in
+        QiongcheDeviceInitTransportHandle(serviceClient: transport, shutdown: {})
+    })
+    let sdk = try QiongcheDataGatewaySDK(
+        rootURL: root,
+        deviceProvisioner: provisioner,
+        clock: FixedQiongcheSDKClock(date: Date(timeIntervalSince1970: 1_778_840_001))
+    )
+
+    try await sdk.saveConfigAndInit(configString: validQiongcheConfig(deviceID: "robot-002"))
+
+    #expect(await transport.methods() == [.initDevice, .reinitDevice])
+    #expect(try await ArchebaseConfigStore(configURL: paths.configURL).load() == (try ArchebaseConfig(
+        apiKey: "credential-v3",
+        tags: ["device": "robot-reinit-message"]
+    )))
+}
+
 @Test func qiongcheSDKActorDefaultInitSucceedsWithTemporaryRoot() throws {
     _ = try QiongcheDataGatewaySDK(rootURL: qiongcheTemporaryRoot())
 }

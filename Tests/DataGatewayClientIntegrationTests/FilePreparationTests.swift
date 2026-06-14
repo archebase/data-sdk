@@ -6,13 +6,99 @@ import Testing
 @testable import DataGatewayClient
 
 final class PassthroughSecurityScopedAccessor: SecurityScopedFileAccessing, @unchecked Sendable {
-    func access<Result>(_ fileURL: URL, operation: @Sendable () throws -> Result) rethrows -> Result where Result : Sendable {
+    func access<Result>(_ fileURL: URL, operation: @Sendable () throws -> Result) throws -> Result where Result: Sendable {
         _ = fileURL
         return try operation()
     }
 
+    func access<Result>(_ fileURL: URL, operation: @Sendable () async throws -> Result) async throws -> Result where Result: Sendable {
+        _ = fileURL
+        return try await operation()
+    }
+
+    func access<Result>(
+        _ fileURL: URL,
+        bookmarkData: Data?,
+        operation: @Sendable (_ accessibleURL: URL) throws -> Result
+    ) throws -> Result where Result: Sendable {
+        _ = bookmarkData
+        return try operation(fileURL)
+    }
+
+    func access<Result>(
+        _ fileURL: URL,
+        bookmarkData: Data?,
+        operation: @Sendable (_ accessibleURL: URL) async throws -> Result
+    ) async throws -> Result where Result: Sendable {
+        _ = bookmarkData
+        return try await operation(fileURL)
+    }
+
     func bookmarkData(for fileURL: URL) throws -> Data {
         Data("bookmark:\(fileURL.path)".utf8)
+    }
+}
+
+final class RecordingSecurityScopedAccessor: SecurityScopedFileAccessing, @unchecked Sendable {
+    struct AccessRecord: Equatable {
+        let fileURL: URL
+        let bookmarkData: Data?
+    }
+
+    private let lock = NSLock()
+    private var records: [AccessRecord] = []
+
+    func access<Result>(_ fileURL: URL, operation: @Sendable () throws -> Result) throws -> Result where Result: Sendable {
+        self.record(fileURL: fileURL, bookmarkData: nil)
+        return try operation()
+    }
+
+    func access<Result>(_ fileURL: URL, operation: @Sendable () async throws -> Result) async throws -> Result where Result: Sendable {
+        self.record(fileURL: fileURL, bookmarkData: nil)
+        return try await operation()
+    }
+
+    func access<Result>(
+        _ fileURL: URL,
+        bookmarkData: Data?,
+        operation: @Sendable (_ accessibleURL: URL) throws -> Result
+    ) throws -> Result where Result: Sendable {
+        self.record(fileURL: fileURL, bookmarkData: bookmarkData)
+        return try operation(fileURL)
+    }
+
+    func access<Result>(
+        _ fileURL: URL,
+        bookmarkData: Data?,
+        operation: @Sendable (_ accessibleURL: URL) async throws -> Result
+    ) async throws -> Result where Result: Sendable {
+        self.record(fileURL: fileURL, bookmarkData: bookmarkData)
+        return try await operation(fileURL)
+    }
+
+    func bookmarkData(for fileURL: URL) throws -> Data {
+        Data("bookmark:\(fileURL.path)".utf8)
+    }
+
+    func accessRecords() -> [AccessRecord] {
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        return self.records
+    }
+
+    private func record(fileURL: URL, bookmarkData: Data?) {
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        self.records.append(AccessRecord(fileURL: fileURL, bookmarkData: bookmarkData))
+    }
+}
+
+final class RecordingStreamDelegate: NSObject, StreamDelegate {
+    private(set) var events: [Stream.Event] = []
+
+    func stream(_ aStream: Stream, handle eventCode: Stream.Event) {
+        _ = aStream
+        self.events.append(eventCode)
     }
 }
 
@@ -61,6 +147,20 @@ final class MemoryFileSystem: FileSystemProviding, @unchecked Sendable {
             throw CocoaError(.fileNoSuchFile)
         }
         return entry.data
+    }
+
+    func readRange(from url: URL, offset: UInt64, maxLength: Int) throws -> Data {
+        guard let entry = self.storage[url.standardizedFileURL] else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+        let start = min(Int(offset), entry.data.count)
+        let end = min(start + maxLength, entry.data.count)
+        return entry.data.subdata(in: start ..< end)
+    }
+
+    func inputStream(from url: URL, offset: UInt64, length: UInt64) throws -> InputStream {
+        let data = try self.readRange(from: url, offset: offset, maxLength: Int(length))
+        return InputStream(data: data)
     }
 
     func createDirectory(at url: URL) throws {
@@ -425,7 +525,7 @@ private extension Dictionary {
     #expect(error == .zeroByteFile)
 }
 
-@Test func externalFileIsCopiedIntoManagedStaging() throws {
+@Test func externalFileUsesSourceURLWithoutManagedStagingCopy() throws {
     let sourceURL = URL(fileURLWithPath: "/external/photo.heic")
     let stagingRoot = URL(fileURLWithPath: "/sandbox/staging")
     let data = Data("robot-camera-data".utf8)
@@ -445,9 +545,8 @@ private extension Dictionary {
     )
 
     #expect(prepared.sourceFileURL == sourceURL)
-    #expect(prepared.managedFileURL != sourceURL)
-    #expect(prepared.managedFileURL.path.hasPrefix(stagingRoot.path))
-    #expect(filesystem.copiedItems().count == 1)
+    #expect(prepared.managedFileURL == sourceURL)
+    #expect(filesystem.copiedItems().isEmpty)
     #expect(prepared.fileSize == UInt64(data.count))
     #expect(prepared.fingerprint == LocalFileFingerprint(
         size: UInt64(data.count),
@@ -455,6 +554,27 @@ private extension Dictionary {
         firstChunkMD5Hex: "115EEAF7F69D1BF8FA4FAB891CB724C7"
     ))
     #expect(prepared.bookmarkData == Data("bookmark:/external/photo.heic".utf8))
+}
+
+@Test func fileRangeInputStreamSupportsCFNetworkDelegateOperations() throws {
+    let root = try filePreparationTemporaryRoot()
+    let sourceURL = root.appendingPathComponent("range-stream.bin")
+    try Data("0123456789".utf8).write(to: sourceURL)
+    let coordinator = FileStagingCoordinator(stagingRoot: root.appendingPathComponent("staging", isDirectory: true))
+    let delegate = RecordingStreamDelegate()
+    let stream = try coordinator.inputStream(from: sourceURL, offset: 2, length: 5)
+    var buffer = [UInt8](repeating: 0, count: 8)
+
+    stream.delegate = delegate
+    stream.schedule(in: .current, forMode: .default)
+    stream.open()
+    let count = stream.read(&buffer, maxLength: buffer.count)
+    stream.close()
+    stream.remove(from: .current, forMode: .default)
+    stream.delegate = nil
+
+    #expect(count == 5)
+    #expect(Data(buffer.prefix(count)) == Data("23456".utf8))
 }
 
 @Test func missingManagedFileMakesResumeImpossible() {
@@ -476,7 +596,7 @@ private extension Dictionary {
         )
     }
 
-    #expect(error == .resumeNotPossible("managed file missing: /sandbox/staging/missing.bin"))
+    #expect(error == .resumeNotPossible("source file missing: /sandbox/staging/missing.bin"))
 }
 
 @Test func fingerprintMismatchMakesResumeImpossible() throws {
@@ -503,6 +623,36 @@ private extension Dictionary {
     }
 
     #expect(error == .resumeNotPossible("local file fingerprint changed"))
+}
+
+@Test func fingerprintValidationUsesBookmarkScopedAccess() throws {
+    let managedURL = URL(fileURLWithPath: "/external/scoped-demo.bin")
+    let bookmark = Data("bookmark:/external/scoped-demo.bin".utf8)
+    let data = Data("robot-data-scoped".utf8)
+    let accessor = RecordingSecurityScopedAccessor()
+    let filesystem = MemoryFileSystem(files: [
+        managedURL: .file(size: UInt64(data.count), modifiedAt: Date(timeIntervalSince1970: 100), data: data),
+    ])
+    let coordinator = FileStagingCoordinator(
+        stagingRoot: URL(fileURLWithPath: "/sandbox/staging"),
+        fileSystem: filesystem,
+        securityScopedAccessor: accessor
+    )
+
+    try coordinator.validatePreparedFile(
+        managedFileURL: managedURL,
+        bookmarkData: bookmark,
+        expectedFingerprint: LocalFileFingerprint(
+            size: UInt64(data.count),
+            modifiedAt: Date(timeIntervalSince1970: 100),
+            firstChunkMD5Hex: "E0156588AFEF4061755164862427C151"
+        )
+    )
+
+    #expect(accessor.accessRecords().contains(RecordingSecurityScopedAccessor.AccessRecord(
+        fileURL: managedURL,
+        bookmarkData: bookmark
+    )))
 }
 
 @Test func fingerprintValidationToleratesFilesystemModifiedAtPrecisionDrift() throws {

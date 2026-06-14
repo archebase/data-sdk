@@ -388,23 +388,23 @@ package struct LocalStackMockMultipartSession: UploadCoordinatorMultipartSession
     package func uploadPart(
         multipartUploadID: String,
         partNumber: Int,
-        body: Data
+        body: OssUploadBody
     ) async throws -> UploadedPartDescriptor {
         _ = multipartUploadID
         return UploadedPartDescriptor(
             partNumber: partNumber,
             etag: "\"runtime-part-\(partNumber)\"",
-            size: Int64(body.count),
+            size: body.sizeBytes,
             lastModified: nil,
             hashCRC64: nil
         )
     }
 
-    package func putObject(body: Data) async throws -> UploadedPartDescriptor {
+    package func putObject(body: OssUploadBody) async throws -> UploadedPartDescriptor {
         UploadedPartDescriptor(
             partNumber: 1,
             etag: self.completedETag,
-            size: Int64(body.count),
+            size: body.sizeBytes,
             lastModified: nil,
             hashCRC64: nil
         )
