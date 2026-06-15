@@ -592,7 +592,7 @@ package struct SecurityScopedFileAccessor: SecurityScopedFileAccessing {
     }
 
     package func bookmarkData(for fileURL: URL) throws -> Data {
-        try fileURL.bookmarkData(options: [.minimalBookmark, .withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil)
+        try fileURL.bookmarkData(options: [.minimalBookmark], includingResourceValuesForKeys: nil, relativeTo: nil)
     }
 
     private func resolveSecurityScopedURL(fileURL: URL, bookmarkData: Data?) -> URL {
@@ -603,7 +603,7 @@ package struct SecurityScopedFileAccessor: SecurityScopedFileAccessing {
         var bookmarkDataIsStale = false
         guard let resolvedURL = try? URL(
             resolvingBookmarkData: bookmarkData,
-            options: [.withSecurityScope],
+            options: [],
             relativeTo: nil,
             bookmarkDataIsStale: &bookmarkDataIsStale
         ) else {
