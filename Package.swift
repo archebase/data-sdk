@@ -5,7 +5,6 @@ let package = Package(
     name: "SwiftDataGatewayClient",
     platforms: [
         .iOS(.v18),
-        .macOS(.v15),
     ],
     products: [
         .library(name: "DGWProto", targets: ["DGWProto"]),
